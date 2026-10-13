@@ -4876,7 +4876,8 @@ _READY_CARRY_MIN_S = 900
 # One definition for the form that writes it and every reader here; the poller keeps its own copy of
 # the defaults, because it cannot import the web.
 POLL_PARKED_DEFAULT_S, POLL_PARKED_RANGE_S = (60 if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else 30), (10, 600)
-POLL_DRIVING_DEFAULT_S, POLL_DRIVING_RANGE_S = 10, (10, 60)
+POLL_DRIVING_DEFAULT_S = 6 if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else 10
+POLL_DRIVING_RANGE_S = (6, 60)
 
 
 def poll_seconds(driving: bool) -> int:

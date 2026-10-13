@@ -20,6 +20,7 @@ from db import Database, log_login
 from mqtt import MqttService
 from outside_temp import OutsideTempSampler
 from recorder import Recorder
+from state_machine import driving_poll_default
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1000,7 +1001,8 @@ def _poll_vehicle(db, client, ctx, acct) -> None:
         try:
             ctx.recorder.set_poll_intervals(
                 int(db.get_setting("poll_parked", "30") or 30),
-                int(db.get_setting("poll_driving", "10") or 10),
+                max(6, min(60, int(db.get_setting("poll_driving", str(driving_poll_default()))
+                                  or driving_poll_default()))),
             )
             set_charge_current_min(float(db.get_setting("charge_detect_min_a", "2.0") or 2.0))
             ctx.recorder.set_reconstruct_min_pct(
@@ -1112,10 +1114,11 @@ def _poll_vehicle(db, client, ctx, acct) -> None:
         # Boost window (set via POST /api/boost, e.g. an iPhone BT shortcut relayed
         # by HA when you get in the car): poll fast so we catch the trip start that
         # deep sleep would otherwise miss. Only matters while still parked — once
-        # DRIVING the state machine already polls at 10s.
-        boosting = db.boosting(ctx.vehicle.vin) and ctx.interval > 10
+        # DRIVING already uses the configured fast cadence; boost uses the default fast cadence.
+        fast = driving_poll_default()
+        boosting = db.boosting(ctx.vehicle.vin) and ctx.interval > fast
         if boosting:
-            ctx.interval = 10
+            ctx.interval = fast
         # Frame age = wall-clock − the cloud frame's own timestamp (sig sts/1). Fresh ≈ a few
         # seconds; if the cloud re-serves a stale frame (car in a 4G dead zone) it climbs without
         # bound — the one signal that tells "stale re-serve" from "genuinely stopped here".
@@ -1266,6 +1269,18 @@ def _prune_daily(db) -> None:
         log.warning("DB prune skipped: %s", exc)
 
 
+def _migrate_cn_driving_poll(db):
+    """Once on upgrade, replace the previous 10s cadence; keep other custom values."""
+    from api_backend import is_china
+    marker = "cn_poll_driving_6s_migrated"
+    if not is_china() or db.get_setting(marker, "0") == "1":
+        return
+    if db.get_setting("poll_driving", "").strip() == "10":
+        db.set_setting("poll_driving", "6")
+        log.info("中國區行駛輪詢已由 10 秒更新為 6 秒")
+    db.set_setting(marker, "1")
+
+
 def main():
     from runtime_paths import prepare_installation
     prepare_installation()
@@ -1283,6 +1298,8 @@ def main():
         log.warning("Factory reset requested — erasing all local data (account, trips, charges, "
                     "positions, settings); the setup wizard will reopen")
         db.factory_reset()
+
+    _migrate_cn_driving_poll(db)
 
     # If no env vars set, wait for the setup wizard to complete
     if not os.environ.get("LEAPMOTOR_USER") and not db.is_setup_complete():
@@ -1493,7 +1510,7 @@ def main():
             if remaining <= 0:
                 break
             time.sleep(min(5.0, remaining))
-            if interval > 10 and any(db.boosting(c.vehicle.vin) for c in contexts):
+            if interval > driving_poll_default() and any(db.boosting(c.vehicle.vin) for c in contexts):
                 break   # a command just landed on one of the cars → go round now
 
     client.close()

@@ -658,6 +658,7 @@ def _ctx(**kwargs):
                 _vin, _name, car_type=(_veh or {}).get("car_type", "")))
     return {**kwargs, "api_v2_command_css": _command_css, "lang": lang, "t": t, "version": MATE_VERSION, "demo": _IS_DEMO,
             "charge_phase_label": charge_phase_label,
+            "poll_driving_default": db_reader.POLL_DRIVING_DEFAULT_S,
             "unconfigured_cars": ", ".join(
                 (v.get("car_type") or (v.get("vin") or "")[-6:]) for v in _unconfigured),
             "vehicles": _vehicles,
@@ -5488,7 +5489,7 @@ _BOOST_DEFAULT_S = 300   # 5 min — covers the "got in the car → started driv
 
 @app.api_route("/api/boost", methods=["GET", "POST"])
 async def boost(seconds: int = _BOOST_DEFAULT_S):
-    """Trigger fast (10s) polling for a window, so the poller catches a trip start that
+    """Trigger fast polling for a window, so the poller catches a trip start that
     would otherwise be missed during deep sleep. Meant to be called when you get in the
     car (e.g. an iPhone Bluetooth shortcut, relayed by HA on the LAN — Mate stays local).
     It can't tell which car you got into, so every car is sped up (db_reader.boost_every_car)."""

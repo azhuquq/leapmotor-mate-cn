@@ -136,7 +136,7 @@
        which models lack it; the data decides. Read-only (needs P + device). #}
     {% if v2l %}
     <div class="mt-4 pt-4 border-t border-slate-700/60 space-y-2.5"
-         hx-get="api/v2l-card" hx-trigger="load, every 10s" hx-swap="innerHTML">
+         hx-get="api/v2l-card" hx-trigger="load, every {{ poll_driving_default|default(6) }}s" hx-swap="innerHTML">
       {% include "partials/v2l_card.html" %}
     </div>
     {% endif %}

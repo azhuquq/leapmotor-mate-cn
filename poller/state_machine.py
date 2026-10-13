@@ -2,7 +2,7 @@
 Adaptive polling state machine.
 
 States and intervals. There are only TWO cadences, both set by the user in Settings
-(`poll_parked` / `poll_driving`, 30s and 10s by default) — every state maps onto one of
+(`poll_parked` / `poll_driving`, CN defaults 30s and 6s) — every state maps onto one of
 them, so the numbers below are which cadence, not a fixed value per state:
   PARKED_SLEEP   parked   — no activity for 30+ min (car sleeping)
   PARKED_ACTIVE  parked   — normal parked, nothing unusual
@@ -20,7 +20,7 @@ Transitions (all independent of HA and phone):
   PARKED_ACTIVE       → PARKED_SLEEP   no change for SLEEP_AFTER_S (30 min)
   PARKED_ALERT        → DRIVING        speed > 0 or gear D
   PARKED_ALERT        → PARKED_ACTIVE  no drive within ALERT_EXPIRES_S (5 min)
-  DRIVING             → PARKED_ACTIVE  gear P held ~1 min (6 × 10s), OR cable plugged (trip ends now),
+  DRIVING             → PARKED_ACTIVE  gear P held ~1 min, OR cable plugged (trip ends now),
                                        OR the cloud has repeated one "D" frame for 30 min (#233 —
                                        the P readings are never coming, see FROZEN_DRIVE_LIMIT_S)
   ANY_PARKED          → CHARGING       charging_status > 0  (REAL current / C10: 1149==2; NOT the cable alone)
@@ -33,6 +33,8 @@ Transitions (all independent of HA and phone):
   ANY                 → OFFLINE        3 consecutive API errors
 """
 import logging
+import math
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -66,10 +68,11 @@ ALERT_EXPIRES_S = 300    # 5 min in PARKED_ALERT without driving → back to ACT
 # keeps adding up, a wobble doesn't.
 _REEV_SOC_RISE_PCT = 0.3   # total climb from the low-water mark that means "this is charging"
 # End a trip only after the car has been in gear P for ~1 min — matches the HA
-# leapmotor_trip automation (gear → P, for: minutes: 1). At the 10s driving poll
-# that's 6 readings. Gear-based (not speed) so red lights / brief stops, where the
+# leapmotor_trip automation (gear → P, for: minutes: 1). At the 6s driving poll
+# that's 10 readings. Gear-based (not speed) so red lights / brief stops, where the
 # gear stays D, never split one drive into many trips.
-PARKED_CONFIRM  = 6      # consecutive gear-P readings to end a trip (~1 min @ 10s)
+PARKED_CONFIRM  = 6      # minimum consecutive gear-P readings; also wait ~60s worth of polls
+PARKED_CONFIRM_SECONDS = 60
 
 # …and those six readings only count once the CAR says the drive is over. P with the car still
 # switched on (READY, signal 1258) is a stop INSIDE the trip — someone being picked up, a gate, a
@@ -144,7 +147,13 @@ class State(Enum):
 # car (it reads the last cloud-reported state), so a steady ~30s parked cadence is safe
 # and keeps Mate independent (no HA/boost needed to catch a trip start). User-tunable.
 DEFAULT_POLL_PARKED  = 30
-DEFAULT_POLL_DRIVING = 10
+
+
+def driving_poll_default() -> int:
+    return 6 if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else 10
+
+
+DEFAULT_POLL_DRIVING = driving_poll_default()
 
 _PARKED_STATES = {State.PARKED_SLEEP, State.PARKED_ACTIVE, State.PARKED_ALERT}
 
@@ -168,7 +177,7 @@ class StateEvent:
 class StateMachine:
     state: State = State.UNKNOWN
     poll_parked: int           = DEFAULT_POLL_PARKED    # tunable from Settings
-    poll_driving: int          = DEFAULT_POLL_DRIVING
+    poll_driving: int          = field(default_factory=driving_poll_default)
     _prev_fp: Optional[tuple]  = field(default=None,  repr=False)
     _last_change_ts: float     = field(default=0.0,   repr=False)
     _alert_start_ts: float     = field(default=0.0,   repr=False)
@@ -348,7 +357,9 @@ class StateMachine:
                     events.append(self._go(State.PARKED_ACTIVE, data, stood_still=True))
             elif data.gear == "P":
                 self._parked_count += 1
-                if self._parked_count >= PARKED_CONFIRM:
+                confirmations = max(PARKED_CONFIRM,
+                    math.ceil(PARKED_CONFIRM_SECONDS / max(1, self.poll_driving)))
+                if self._parked_count >= confirmations:
                     self._parked_count = 0
                     self._still_since = None
                     self._alert_start_ts = now

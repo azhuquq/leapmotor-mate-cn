@@ -168,7 +168,7 @@ def build_system_info(version: str) -> dict:
         "counts": {"trips": _count("trips"), "charges": _count("charges"),
                    "positions": _count("positions"), "ha_samples": _count("ha_samples")},
         "poll_parked": settings.get("poll_parked", "30"),
-        "poll_driving": settings.get("poll_driving", "10"),
+        "poll_driving": settings.get("poll_driving", str(db_reader.POLL_DRIVING_DEFAULT_S)),
         "retention_days": settings.get("positions_retention_days", "0"),
         "vampire_min_drop_pct": settings.get("vampire_min_drop_pct", "0.2"),
         "vampire_min_hours": settings.get("vampire_min_hours", "1"),
@@ -642,7 +642,7 @@ def _trips_section() -> str:
 # 🔴 A default written twice drifts, and then this section calls a modified install stock — the exact
 # question it exists to answer. The test holds each of these against the code that reads it.
 _ADVANCED_DEFAULTS = {
-    "poll_parked": "30", "poll_driving": "10",
+    "poll_parked": "30", "poll_driving": str(db_reader.POLL_DRIVING_DEFAULT_S),
     "charge_detect_min_a": "2.0",           # poller/client.py:_CHARGE_CURRENT_MIN_A
     "charge_reconstruct_min_pct": "2.0",    # poller/recorder.py:_reconstruct_min_pct
     "vampire_min_drop_pct": "0.2", "vampire_min_hours": "1",

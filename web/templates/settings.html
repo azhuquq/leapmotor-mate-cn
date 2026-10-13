@@ -470,13 +470,13 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm text-white">{{ t('poll_driving_label') }}</span>
-            <span class="font-bold text-brand"><span id="pd-val">{{ settings.get('poll_driving', '10') }}</span>s</span>
+            <span class="font-bold text-brand"><span id="pd-val">{{ settings.get('poll_driving', poll_driving_default|default(6)) }}</span>s</span>
           </div>
-          <input type="range" name="poll_driving" min="10" max="60" step="5"
-                 value="{{ settings.get('poll_driving', '10') }}"
+          <input type="range" name="poll_driving" min="6" max="60" step="1"
+                 value="{{ settings.get('poll_driving', poll_driving_default|default(6)) }}"
                  oninput="document.getElementById('pd-val').textContent=this.value"
                  class="w-full accent-brand cursor-pointer">
-          <div class="flex justify-between text-[10px] text-slate-600 mt-1"><span>10s</span><span>60s</span></div>
+          <div class="flex justify-between text-[10px] text-slate-600 mt-1"><span>6s</span><span>60s</span></div>
         </div>
         <div id="poll-result" class="text-xs"></div>
       
