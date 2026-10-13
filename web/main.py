@@ -4672,6 +4672,7 @@ async def account_logout(request: Request):
         from cn_backend import connect
         with connect() as cn_db:
             cn_db.execute("DELETE FROM settings WHERE key='cn_shared_session' OR key LIKE 'cn_pending_%' OR key LIKE 'cn_capabilities_%' OR key LIKE 'leapmotor_pin_%'")
+        command_client.clear_car_picture_cache()
     db_reader.set_setting("leapmotor_user", "")
     db_reader.set_secret("leapmotor_pass", "")
     db_reader.set_secret("leapmotor_pin", "")
@@ -4698,6 +4699,7 @@ async def account_factory_reset(request: Request):
     db_reader.set_setting("factory_reset_pending", "1")
     db_reader.set_setting("setup_complete", "0")        # gate open immediately; poller wipes the rest
     command_client._session._reset()
+    command_client.clear_car_picture_cache()
     # Drop the cached car-picture artifacts (on disk, not in the DB) so the next account starts clean.
     for p in (_car_picture_pkg_path(), _car_picture_cache_path()):
         try:
@@ -5942,14 +5944,29 @@ _car_pic_retry_after = 0.0
 
 
 @app.get("/api/car-picture")
-async def car_picture(refresh: int = 0):
-    """Serve the owner's vehicle image — composed LIVE from the per-vehicle layer package to reflect
+async def car_picture(refresh: int = 0, vehicle_id: int = 0):
+    """CN serves the official whole-car render via its VIN-specific URL cache.
+
+    EU serves the owner's vehicle image — composed LIVE from the per-vehicle layer package to reflect
     the current state (charge cable, charging animation, trunk), like the official app. The package
     ZIP is cached to disk; a manual ?refresh=1 OR the first request after each restart re-downloads it,
     so a colour changed on the car gets picked up (#143). Falls back to the cached package, then its
     static render, then the legacy PNG, on any problem — so the Overview never breaks."""
     global _car_pic_boot_refresh, _car_pic_retry_after
     import asyncio
+    from api_backend import is_china
+    if is_china():
+        account = db_reader.get_account_user()
+        vehicle = (next((car for car in db_reader.get_vehicles() if car["id"] == vehicle_id), None)
+                   if vehicle_id else db_reader.get_vehicle()[0])
+        if not account or not vehicle or not vehicle.get("vin"):
+            return Response(status_code=404)
+        image = await asyncio.to_thread(command_client.get_car_picture,
+            vin=vehicle["vin"], refresh=bool(refresh))
+        if not image or account != db_reader.get_account_user():
+            return Response(status_code=404)
+        return Response(content=image, media_type="image/png",
+                        headers={"Cache-Control": "private, no-store"})
     pkg_path = _car_picture_pkg_path()
     # Re-download from the cloud on a manual ?refresh=1, OR once after each (re)start (#143 — the car's
     # colour may have changed since the package was first cached). Every other request serves the disk

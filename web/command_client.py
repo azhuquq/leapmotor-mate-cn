@@ -264,12 +264,14 @@ class LeapmotorSession:
     """Login once, reuse token for all subsequent API calls."""
 
     def __init__(self):
+        from cn_car_picture import CarPictureCache
         self._api: LeapmotorApiClient | None = None
         self._vehicle = None
         self._vehicles: list = []
         self._lock = threading.Lock()
         self._status_car_type: dict[str, str] = {}
         self._status_fallback_tried: set[str] = set()
+        self._cn_picture_cache = CarPictureCache()
 
     def _target(self):
         """The car the picker is on — resolved on EVERY use, never frozen at login.
@@ -560,10 +562,22 @@ class LeapmotorSession:
                     self._reset()
             return None
 
-    def get_car_picture(self) -> bytes | None:
-        """Static owner vehicle PNG, extracted from the car-picture package ZIP
-        (android/xxhdpi/carpic_for_tripsum.png) — same as the HA integration's
-        image.leapmotor_vehicle_picture. Rarely changes → caller should cache."""
+    def get_car_picture(self, *, vin=None, refresh=False) -> bytes | None:
+        """CN: official whole-car URL and HA-style cache. EU: static package render."""
+        from api_backend import is_china
+        if is_china():
+            import db_reader
+            with self._lock:
+                account = db_reader.get_account_user()
+                target_vin = vin or (db_reader.get_vehicle()[0] or {}).get("vin", "")
+                def metadata():
+                    self._connect()
+                    target = self._car(target_vin)
+                    if target is None:
+                        raise ValueError("Vehicle unavailable on current account")
+                    return self._api.get_car_picture(target)
+                return self._cn_picture_cache.get(account, target_vin, metadata,
+                    lambda url: self._api.download_picture(url), refresh=refresh)
         import io, zipfile
         with self._lock:
             for attempt in range(2):
@@ -947,8 +961,12 @@ def last_cloud_refusal():
     return getattr(_session, "last_refusal", None)
 
 
-def get_car_picture() -> bytes | None:
-    return _session.get_car_picture()
+def get_car_picture(*, vin=None, refresh=False) -> bytes | None:
+    return _session.get_car_picture(vin=vin, refresh=refresh)
+
+
+def clear_car_picture_cache():
+    _session._cn_picture_cache.clear()
 
 
 def get_car_picture_package() -> bytes | None:

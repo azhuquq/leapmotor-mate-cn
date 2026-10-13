@@ -56,6 +56,12 @@ docker compose up -d --build
 
 多個瓦片載入失敗時，整張地圖切回 OpenStreetMap 並改用 WGS84 投影，車標與路線仍保留原始 WGS84 資料。切換底圖可重新嘗試高德；不會將 OSM 瓦片混入 GCJ02 圖格。高德縮放上限沿用參考卡片的 18 級。
 
+## 車輛外觀圖片
+
+圖片沿用 `ha-leapmotor-cn` 的取得方式：按 VIN 呼叫 `/carownerservice/v3/api/carpicture/key`，優先使用 `shareBindUrl` 的整車圖片直鏈，兼容 `url`／`imageUrl`／`picUrl`／`carPic`，HTTP 地址提升為 HTTPS。由伺服器下載並提供 PNG，CDN 請求不附帶帳號憑證，簽名直鏈不傳給瀏覽器。
+
+每帳號、每 VIN 分別在記憶體快取；圖片地址六小時更新一次，相同地址不重複下載。地址或下載失敗保留舊圖，五分鐘後重新取得地址；`/api/car-picture?refresh=1` 可立即刷新。登出及重設清除快取，重新啟動後按需載入。中國區顯示官方整車外觀圖。
+
 ## 登入資料與備份
 
 `./data` 保存 SQLite 資料庫、加密用的 `secret.key` 與登入資料。帳號／gateway token、簽名材料及裝置 ID 存在加密 blob，短信驗證碼不保存；每車 PIN 使用既有的加密設定機制。備份時請保留**整個 data 目錄**，只備份資料庫可能無法還原登入與 PIN。

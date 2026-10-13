@@ -90,7 +90,7 @@
                              status.door_driver_open, status.door_passenger_open,
                              status.door_rear_left_open, status.door_rear_right_open,
                              status.window_fl_open, status.window_rl_open] | join('-')) if status else '' %}
-    <img src="api/car-picture?v={{ car_img_token }}" alt="{{ vehicle.car_type if vehicle else 'Vehicle' }}"
+    <img src="api/car-picture?v={{ car_img_token }}{% if china_market is defined and china_market() and vehicle %}&amp;vehicle_id={{ vehicle.id }}{% endif %}" alt="{{ vehicle.car_type if vehicle else 'Vehicle' }}"
          class="max-h-48 w-full object-contain"
          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
     <div class="hidden flex-col items-center justify-center text-slate-600" style="height:12rem">
