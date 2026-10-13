@@ -1,6 +1,9 @@
 # Keep secrets, local data, tests and cruft out of the Docker image.
 .git
 .github
+.env
+**/*.har
+**/*.apk
 **/__pycache__
 **/*.pyc
 **/*.bak

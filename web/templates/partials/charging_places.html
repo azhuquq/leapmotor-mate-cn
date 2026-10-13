@@ -36,10 +36,12 @@
   details.addEventListener('toggle', function () {
     if (!details.open) return;
     if (!placeMap) {
-      placeMap = L.map('charging-place-map').setView([45, 10], 4);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      placeMap = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('charging-place-map').setView({% if china_market is defined and china_market() %}MateMap.defaultCenter{% else %}[45, 10]{% endif %}, 4);
+      {% if china_market is defined and china_market() %}MateMap.addTiles(placeMap);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution:'© OpenStreetMap', referrerPolicy:'origin'
       }).addTo(placeMap);
+{% endif %}
       placeMap.on('click', function (e) {
         form.elements.latitude.value=e.latlng.lat.toFixed(6);
         form.elements.longitude.value=e.latlng.lng.toFixed(6);

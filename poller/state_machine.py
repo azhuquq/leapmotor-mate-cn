@@ -205,7 +205,7 @@ class StateMachine:
         # ...except on a REEV, where neither of those two ever appears during an AC home charge
         # (see _REEV_SOC_RISE_PCT above). There, the battery climbing while plugged in and parked
         # IS the charge. Strictly gated on is_reev — a BEV never reaches this branch.
-        if getattr(data, "is_reev", False) and data.plug_connected and not is_driving:
+        if getattr(data, "market", "EU") != "CN" and getattr(data, "is_reev", False) and data.plug_connected and not is_driving:
             if self._reev_last_soc is None or data.soc < self._reev_last_soc:
                 self._reev_last_soc = data.soc          # (re)set the low-water mark
             elif data.soc - self._reev_last_soc >= _REEV_SOC_RISE_PCT:
@@ -240,7 +240,12 @@ class StateMachine:
         # he enabled the schedule at 19:10 during a charge, the car stopped and switched to 4, and
         # without this guard the session he ended would have stayed open until the window at 01:50.
         # Plugged is not charging.
-        is_charging = charge_active or (data.plug_connected and not data.charge_deferred)
+        if getattr(data, "market", "EU") == "CN":
+            unknown = data.charge_state_code not in (0, 1, 2, 3, 4, 5, 6)
+            is_charging = charge_active or ((data.charge_state_code == 6 or unknown)
+                                           and not is_driving and self.state == State.CHARGING)
+        else:
+            is_charging = charge_active or (data.plug_connected and not data.charge_deferred)
         # V2L (bidirectional discharge) is parked activity that changes with the load → poll fast.
         self._v2l_active = getattr(data, "ac_port_mode", 0) == 2
         fp          = data.fingerprint()

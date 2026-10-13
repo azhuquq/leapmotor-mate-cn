@@ -1514,7 +1514,14 @@
     "place_none": "Kein Ortstarif",
     "place_invalid": "Name, Koordinaten, Radius (25–500 m) und Preis (0–100) prüfen.",
     "place_closed_only": "Den Ort nach Ladeende zuweisen.",
-    "place_unmerge_first": "Zusammengeführte Ladungen vor dem Ortswechsel trennen."
+    "place_unmerge_first": "Zusammengeführte Ladungen vor dem Ortswechsel trennen.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

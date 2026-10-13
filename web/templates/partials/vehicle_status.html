@@ -101,10 +101,15 @@
   <div class="card">
     <h2 class="font-semibold text-white mb-4 flex items-center gap-2">{{ mdi(IC_WIN_CLOSED) }} {{ t('windows') }}</h2>
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      {% if china_market() %}
+      {{ state_tile(mdi(IC_WIN_CLOSED), t('windows'), vs.windows.any_open) }}
+      <p class="text-xs text-slate-400 col-span-2">中國區目前顯示整車車窗開關狀態。</p>
+      {% else %}
       {{ win_tile(t('win_fl'), vs.windows.fl, vs.windows.fl_pct) }}
       {{ win_tile(t('win_fr'), vs.windows.fr, vs.windows.fr_pct) }}
       {{ win_tile(t('win_rl'), vs.windows.rl, vs.windows.rl_pct) }}
       {{ win_tile(t('win_rr'), vs.windows.rr, vs.windows.rr_pct) }}
+      {% endif %}
       {# The sunshade's own open/closed words: the generic ones do not agree with its name in every language. #}
       {{ state_tile(mdi(IC_ROOF), t('win_sunshade'), vs.windows.sunshade, open_class='text-brand', pct=vs.windows.sunshade_pct,
                     open_word=t('shade_open_state'), closed_word=t('shade_closed_state')) }}

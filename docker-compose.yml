@@ -11,7 +11,8 @@ services:
       - ./data:/data            # persistent DB only (code is baked into the image)
     environment:
       - DB_PATH=/data/leapmotor_mate.db
-      - TZ=Europe/Rome          # local time for the UI (HA passes this automatically to add-ons)
+      - MATE_MARKET=CN
+      - TZ=Asia/Shanghai          # local time for the UI (HA passes this automatically to add-ons)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/healthz', timeout=8)"]

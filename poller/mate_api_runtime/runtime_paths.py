@@ -23,7 +23,7 @@ def configure():
     p = paths()
     os.environ.setdefault('DATA_CERT_DIR', str(p.cert_dir))
     os.environ.setdefault('CERT_DIR', str(p.cert_dir))
-    os.environ.setdefault('TZ', 'Europe/Rome')
+    os.environ.setdefault('TZ', 'Asia/Shanghai' if os.environ.get('MATE_MARKET', 'CN').upper() == 'CN' else 'Europe/Rome')
 
 
 def prepare_installation():
@@ -34,6 +34,8 @@ def prepare_installation():
     if os.environ.get('MATE_DEMO', '').lower() in ('1', 'true'):
         return {'state': 'demo'}
     backup_before_migration(p.db)
+    if os.environ.get("MATE_MARKET", "CN").upper() == "CN":
+        return {"state": "ready", "market": "CN", "manual_upload_required": False}
     source = os.environ.get('MATE_APPLICATION_BUNDLE')
     if source:
         return bootstrap(source=source, destination=p.data)

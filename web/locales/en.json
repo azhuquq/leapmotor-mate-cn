@@ -1514,7 +1514,14 @@
     "place_none": "No place tariff",
     "place_invalid": "Check the name, coordinates, radius (25–500 m) and price (0–100).",
     "place_closed_only": "Assign a place after the session has ended.",
-    "place_unmerge_first": "Unmerge the charging sessions before changing their place."
+    "place_unmerge_first": "Unmerge the charging sessions before changing their place.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

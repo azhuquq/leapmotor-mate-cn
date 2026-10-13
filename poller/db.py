@@ -287,7 +287,7 @@ def trip_distance_km(gps_km: float, has_gps: bool, start_odo: float, end_odo: fl
 # Settings keys holding real secrets — encrypted at rest (see crypto.py). Everything
 # else (flags, prefixes, prices, ids, identifiers) stays plaintext.
 SECRET_KEYS = {"leapmotor_pass", "leapmotor_pin", "abrp_token",
-               "mqtt_pass", "geocoder_key", "ha_token", "ocm_key", "tomtom_key"}
+               "mqtt_pass", "geocoder_key", "ha_token", "ocm_key", "tomtom_key", "cn_shared_session"}
 
 
 def log_login(path: str, outcome: str, process: str = "poller", reason=None) -> None:
@@ -1500,6 +1500,11 @@ class Database:
         return row["id"]
 
     def save_position(self, vehicle_id: int, data) -> int:
+        if getattr(data, "market", "EU") == "CN":
+            from cn_telemetry import save_position
+            from vehicle_snapshot import VehicleSnapshot
+            snapshot = VehicleSnapshot(data, data.raw_signals, data.reported_fields, {})
+            return save_position(self._conn, vehicle_id, snapshot)
         cur = self._conn.execute(
             """INSERT INTO positions
                (vehicle_id, recorded_at, latitude, longitude, speed_kmh, odometer_km,

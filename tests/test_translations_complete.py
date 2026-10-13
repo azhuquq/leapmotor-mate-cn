@@ -28,7 +28,9 @@ import pytest
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 LOCALES = WEB / "locales"
-LANGS = ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es")
+LANGS = ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW")
+# China has a separate SMS wizard, rather than the international email/certificate flow.
+WIZARD_LANGS = tuple(lang for lang in LANGS if lang != "zh-TW")
 
 
 def _flat(d, prefix=""):
@@ -49,7 +51,7 @@ def _wizard_blocks():
     """{lang: {key, ...}} for the dictionaries inside setup.html."""
     lines = (WEB / "templates" / "setup.html").read_text().split("\n")
     out = {}
-    for lang in LANGS:
+    for lang in WIZARD_LANGS:
         opener = re.compile(rf"^\s*['\"]?{re.escape(lang)}['\"]?:\s*\{{\s*$")
         start = next((i for i, ln in enumerate(lines) if opener.match(ln)), None)
         assert start is not None, f"the setup wizard has no {lang} block at all"
@@ -79,7 +81,7 @@ def test_every_language_has_a_file():
         assert (LOCALES / f"{lang}.json").is_file(), f"no locale file for {lang}"
 
 
-@pytest.mark.parametrize("lang", [l for l in LANGS if l != "en"])
+@pytest.mark.parametrize("lang", [l for l in WIZARD_LANGS if l != "en"])
 def test_the_wizard_has_every_string_too(lang):
     """The wizard's dictionary is a SECOND copy, and this is the one that was short."""
     blocks = _wizard_blocks()

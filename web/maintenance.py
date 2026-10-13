@@ -108,6 +108,10 @@ _pack_cache: dict = {}
 
 
 def load_pack(car_type: Optional[str]) -> Optional[dict]:
+    from api_backend import is_china
+    if is_china():
+        # These packs were validated against international manuals only.
+        return None
     if not car_type:
         return None
     key = car_type.strip().upper()
@@ -222,7 +226,7 @@ def set_baseline(date_iso: str, km: Optional[float]) -> None:
 # ── Formatting helpers (distance respects the user's unit system) ─────────────
 def _grp(n, lang: str) -> str:
     s = f"{int(round(n)):,}"
-    return s.replace(",", ".") if lang != "en" else s
+    return s.replace(",", ".") if lang not in ("en", "zh-TW") else s
 
 
 def _dist(km, lang: str, system: str) -> str:
@@ -422,3 +426,86 @@ def compute(vehicle: Optional[dict], current_km: Optional[float], lang: str) -> 
         "current_km_input": units.dist_val(current_km, 0, system) if current_km is not None else None,
         "dist_unit": units.dist_unit(system),
     }
+
+# Traditional Chinese service labels.
+for _zh_key, _zh_text in {'brake_fluid_replace': '煞車油 — 更換',
+ 'brake_fluid_inspect': '煞車油液位 — 檢查',
+ 'brake_pads_inspect': '煞車皮 — 檢查',
+ 'brake_discs_inspect': '煞車碟 — 檢查',
+ 'brake_hoses_inspect': '煞車軟管與管路 — 檢查',
+ 'cabin_filter_replace': '空調濾芯 — 更換',
+ 'coolant_replace': '冷卻液 — 更換',
+ 'coolant_inspect': '冷卻液液位 — 檢查',
+ 'reducer_oil_replace': '減速器潤滑油 — 更換',
+ 'reducer_filter_replace': '減速器濾芯 — 更換',
+ 'tire_replace': '輪胎 — 更換',
+ 'tire_rotation': '輪胎換位',
+ 'tire_inspect': '輪胎 — 胎壓與胎紋檢查',
+ 'wiper_blades_replace': '雨刷片 — 更換',
+ 'wiper_blades_inspect': '雨刷片 — 檢查',
+ 'driveshaft_boot_inspect': '轉向與傳動軸防塵套 — 檢查',
+ 'battery_pack_inspect': '高壓電池組 — 檢查',
+ 'drive_motor_inspect': '驅動馬達與減速器 — 檢查',
+ 'hvac_system_check': '空調系統 — 檢查',
+ 'charging_port_inspect': '充電接口 — 檢查',
+ 'lights_horn_check': '車燈、喇叭與雨刷 — 檢查',
+ 'software_update_check': '控制軟體 — 檢查'}.items():
+    _LABELS[_zh_key]["zh-TW"] = _zh_text
+
+# Traditional Chinese service labels.
+for _zh_key, _zh_text in {'brakes': '煞車',
+ 'tires': '輪胎',
+ 'drivetrain': '傳動系統',
+ 'climate': '空調',
+ 'cooling': '冷卻系統',
+ 'battery': '電池',
+ 'electrical': '電氣系統',
+ 'exterior': '車身外部'}.items():
+    _CATS[_zh_key]["zh-TW"] = _zh_text
+
+# Traditional Chinese service labels.
+for _zh_key, _zh_text in {'title': '保養',
+ 'subtitle': '依車輛原廠手冊安排保養',
+ 'odometer': '總里程',
+ 'overdue': '已逾期',
+ 'soon': '即將到期',
+ 'ok': '尚未到期',
+ 'log_btn': '記錄',
+ 'log_done': '記錄此項保養已完成',
+ 'date': '日期',
+ 'note': '備註（選填）',
+ 'save': '儲存',
+ 'cancel': '取消',
+ 'last': '上次保養',
+ 'never': '尚無記錄',
+ 'from_delivery': '自交車起',
+ 'interval': '保養週期',
+ 'no_pack_title': '尚未收錄此車型的原廠保養週期',
+ 'no_pack_body': '請依你的中國區車輛保養手冊安排保養。',
+ 'provisional': '暫定週期，請以此車型的原廠手冊確認。',
+ 'baseline_q': '車輛何時交付？',
+ 'baseline_hint': '設定領牌或交車日期，以準確計算首次保養期限。',
+ 'baseline_save': '儲存交車資料',
+ 'baseline_set': '已設定交車資料',
+ 'baseline_edit': '修改交車資料',
+ 'baseline_km': '交車時的里程',
+ 'baseline_km_hint': '填寫交車時的里程；若為新車，可填 0。',
+ 'all_good': '目前無到期保養項目',
+ 'next_first': '首次保養',
+ 'st_overdue': '已逾期',
+ 'st_soon': '即將到期',
+ 'st_ok': '尚未到期',
+ 'bar_time': '時間'}.items():
+    _CHROME[_zh_key]["zh-TW"] = _zh_text
+
+_P["zh-TW"] = {'first': '首次保養尚餘 ',
+ 'in_': '尚餘 ',
+ 'overdue': '已超過 ',
+ 'every': '每 ',
+ 'or': ' 或 ',
+ 'yN': '{n} 年',
+ 'y1': '1 年',
+ 'moN': '{n} 個月',
+ 'mo1': '1 個月',
+ 'dN': '{n} 天',
+ 'd1': '1 天'}

@@ -9,7 +9,7 @@
   {% elif is_complete %}
   <span class="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-green-400 bg-green-400/10 border border-green-400/30">✅ {{ t('charge_complete') }}</span>
   {% else %}
-  <span class="ml-auto text-xs text-slate-600">{{ t('not_charging') }}</span>
+  <span class="ml-auto text-xs text-slate-600">{{ charge_phase_label(status) }}</span>
   {% endif %}
 </div>
 

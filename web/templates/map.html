@@ -22,14 +22,16 @@
     const allPts = [];
     segments.forEach(function (trip) { trip.forEach(function (run) { run.points.forEach(function (p) { allPts.push(p); }); }); });
 
-    const map = L.map('map', { preferCanvas: true }).fitBounds(L.latLngBounds(allPts).pad(0.05));
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const map = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('map', { preferCanvas: true }).fitBounds(L.latLngBounds(allPts).pad(0.05));
+    {% if china_market is defined and china_market() %}MateMap.addTiles(map);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       // OSM blocks tiles that arrive without a Referer; some Firefox setups (strict tracking
       // protection / private mode / hardened forks) drop it cross-origin, so send the page
       // origin explicitly to keep the tiles loading.
       referrerPolicy: 'origin'
     }).addTo(map);
+{% endif %}
 
     // Each trip as its own connected polyline — never joined across trips. A white
     // casing under a blue line keeps the route legible over any road colour (OSM

@@ -1530,7 +1530,7 @@ def per_car_pin_keys() -> list:
 # The secrets kept encrypted at rest. Mirrors poller/db.py's SECRET_KEYS — the same eight settings
 # seen from the other process.
 SECRET_KEYS = ("leapmotor_pass", "leapmotor_pin", "abrp_token", "mqtt_pass",
-               "geocoder_key", "ha_token", "ocm_key", "tomtom_key")
+               "geocoder_key", "ha_token", "ocm_key", "tomtom_key", "cn_shared_session")
 
 
 _decryption_reported = False
@@ -1605,7 +1605,7 @@ _lang_memo: list = [None]
 
 def get_language() -> str:
     if _lang_memo[0] is None:
-        _lang_memo[0] = get_setting("language", "en")
+        _lang_memo[0] = get_setting("language", "zh-TW" if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else "en")
     return _lang_memo[0]
 
 
@@ -1660,7 +1660,7 @@ CURRENCIES = {
     "THB": {"name": "Thai Baht",       "symbol": "฿",   "pos": "before", "dec": 2},
     "MYR": {"name": "Malaysian Ringgit","symbol": "RM", "pos": "before", "dec": 2},
 }
-_DEFAULT_CURRENCY = "EUR"
+_DEFAULT_CURRENCY = "CNY" if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else "EUR"
 
 
 def get_currency_code() -> str:
@@ -2162,8 +2162,13 @@ def _charging_sample(alias: str = "") -> str:
     function — moving `_CHARGE_SAMPLE_MIN_A` or this shape without moving the index's WHERE
     clause the same way turns every per-charge query back into a table walk."""
     q = f"{alias}." if alias else ""
-    return (f"({q}charging = 1 OR ({q}charge_current_a <= -{_CHARGE_SAMPLE_MIN_A} "
-            f"AND COALESCE({q}speed_kmh, 0) <= 2 AND COALESCE({q}gear, 'P') = 'P'))")
+    from api_backend import is_china
+    if not is_china():
+        return (f"({q}charging = 1 OR ({q}charge_current_a <= -{_CHARGE_SAMPLE_MIN_A} "
+                f"AND COALESCE({q}speed_kmh, 0) <= 2 AND COALESCE({q}gear, 'P') = 'P'))")
+    return (f"(({q}market = 'CN' AND {q}cn_charge_state = 1 AND {q}charging = 1) OR (COALESCE({q}market, 'EU') != 'CN' AND "
+            f"({q}charging = 1 OR ({q}charge_current_a <= -{_CHARGE_SAMPLE_MIN_A} "
+            f"AND COALESCE({q}speed_kmh, 0) <= 2 AND COALESCE({q}gear, 'P') = 'P'))))")
 
 
 def _power_window_bounds(db, started_at, ended_at, exclude_ids=()):
@@ -4111,6 +4116,9 @@ def save_fresh_signals(signals: dict, vin: Optional[str] = None) -> None:
 
     `vin` is the car the signals were read from: the row goes under that car, whatever the picker
     says by now (#338). Without it, under the picker's car."""
+    if hasattr(signals, "snapshot"):
+        save_fresh_snapshot(signals.snapshot, vin)
+        return
     # A frame without a charge level is no reading (capability_profile.has_soc_reading): the
     # poller stores nothing from it, and neither does its second writer — which used to store a
     # SoC the car did not send as 0 %.
@@ -4403,6 +4411,15 @@ def get_latest_status() -> Optional[dict]:
     # How old the POSITION is: the fix's own, when the map falls back to one — the poll without a
     # fix is seconds old, the position it falls back to may be days old.
     d["position_age_s"] = _position_age_s(fix.get("frame_ts"), fix.get("recorded_at"))
+    if d.get("market") == "CN":
+        code = d.get("cn_charge_state")
+        moving = d.get("gear") in ("R", "N", "D") or (d.get("speed_kmh") or 0) > 1
+        d["charging"] = int(code == 1 and not moving) if code in (0, 1, 2, 3, 4, 5, 6) else None
+        d["plug_connected"] = code in (1, 2, 3, 4, 6) and not moving if code in (0, 1, 2, 3, 4, 5, 6) else None
+        d["cable_connected"] = d["plug_connected"]
+        d["charge_completed"] = False
+        d["charge_deferred"] = code == 4
+        d["charge_phase"] = {0:"unplugged", 1:"charging", 2:"stopped", 3:"fault", 4:"deferred", 5:"unplugged", 6:"paused"}.get(code, "unknown")
     return d
 
 
@@ -4858,7 +4875,7 @@ _READY_CARRY_MIN_S = 900
 # The poller's cadence as Settings ▸ Poll stores it: the default and the range the form accepts.
 # One definition for the form that writes it and every reader here; the poller keeps its own copy of
 # the defaults, because it cannot import the web.
-POLL_PARKED_DEFAULT_S, POLL_PARKED_RANGE_S = 30, (10, 600)
+POLL_PARKED_DEFAULT_S, POLL_PARKED_RANGE_S = (60 if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else 30), (10, 600)
 POLL_DRIVING_DEFAULT_S, POLL_DRIVING_RANGE_S = 10, (10, 60)
 
 
@@ -12349,3 +12366,13 @@ def _event_answer(composed: dict, part: int, asked: str | None) -> dict:
             "lanes": composed["lanes"], "count": composed["count"], "live": composed["live"],
             "first": composed["first"], "last": composed["last"], "points": composed["points"],
             "address_credit": composed["address_credit"]}
+
+def save_fresh_snapshot(snapshot, vin=None):
+    """Persist the same named snapshot the poller reads, bound to the requested VIN."""
+    from cn_telemetry import save_position
+    if vin and vin.lower() != snapshot.data.vin.lower():
+        raise ValueError("Snapshot vehicle mismatch")
+    db = _conn_rw()
+    row = db.execute("SELECT id FROM vehicles WHERE vin=? COLLATE NOCASE", (snapshot.data.vin,)).fetchone()
+    if row:
+        save_position(db, row[0], snapshot)

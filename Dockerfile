@@ -37,6 +37,8 @@ ENV PYTHONUNBUFFERED=1
 ENV CERT_DIR=/data/certs
 ENV DATA_CERT_DIR=/data/certs
 ENV DB_PATH=/data/leapmotor_mate.db
+ENV MATE_MARKET=CN
+ENV TZ=Asia/Shanghai
 
 # MateBetaTesterOnly flag. 0 in the official image (the research code stays inert); the CI
 # (docker-publish.yml) builds a second ":beta" image with --build-arg MATE_RESEARCH=1, which

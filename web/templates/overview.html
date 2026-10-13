@@ -204,12 +204,14 @@
           const at = L.latLng(pos.lat, pos.lon);
           when.textContent = '(' + pos.ago + ')';
           if (!map) {
-            map = L.map('map').setView(at, START_ZOOM);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            map = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('map').setView(at, START_ZOOM);
+            {% if china_market is defined and china_market() %}MateMap.addTiles(map);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
               attribution: '© OpenStreetMap',
               // OSM blocks tiles with no Referer; send the page origin so they load in privacy-strict Firefox.
               referrerPolicy: 'origin'
             }).addTo(map);
+{% endif %}
             const icon = L.divIcon({
               html: '<div style="background:#14b8a6;width:14px;height:14px;border-radius:50%;border:3px solid white;box-shadow:0 0 6px rgba(0,0,0,0.5)"></div>',
               iconSize: [14,14], iconAnchor: [7,7]

@@ -45,7 +45,7 @@ def decimal_point(s: str) -> str:
     Formatting a number must never be able to raise: with no database reachable (a unit test on
     the pure conversion helpers, a very early request) the dot stands."""
     try:
-        return s.replace(".", ",") if db_reader.get_language() != "en" else s
+        return s.replace(".", ",") if db_reader.get_language() not in ("en", "zh-TW") else s
     except Exception:                                            # noqa: BLE001
         return s
 

@@ -1514,7 +1514,14 @@
     "place_none": "Sans tarif du lieu",
     "place_invalid": "Vérifiez le nom, les coordonnées, le rayon (25–500 m) et le prix (0–100).",
     "place_closed_only": "Attribuez le lieu après la fin de la recharge.",
-    "place_unmerge_first": "Séparez les recharges fusionnées avant de changer leur lieu."
+    "place_unmerge_first": "Séparez les recharges fusionnées avant de changer leur lieu.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

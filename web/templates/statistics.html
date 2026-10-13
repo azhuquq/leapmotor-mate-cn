@@ -7,6 +7,37 @@
 {% block title %}{{ t('nav_statistics') }} — LeapMotor Mate{% endblock %}
 
 {% block content %}
+{% if china_market() %}
+<section class="card mb-6">
+  <div class="flex justify-between items-center gap-3"><h2 class="font-semibold">官方每日行駛能耗</h2><button type="button" id="cn-energy-reload" class="text-sm text-brand">讀取／重新整理</button></div>
+  <p class="text-sm text-slate-400 mt-2">最近七天的驅動、空調及其他行駛能耗；未取得資料顯示「—」，與本地充電記錄分開計算。</p>
+  <div id="cn-daily-energy" class="mt-3 text-sm text-slate-400" role="status">點擊讀取官方資料。</div>
+</section>
+<script>
+document.getElementById('cn-energy-reload').onclick = async function () {
+  const target = document.getElementById('cn-daily-energy')
+  this.disabled = true
+  target.textContent = '正在讀取官方資料…'
+  try {
+    const response = await fetch('api/cn/energy/daily')
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || '暫時無法讀取')
+    const table = document.createElement('table'); table.className='w-full text-right'
+    const header = document.createElement('tr')
+    for (const title of ['日期','驅動','空調','其他','合計（kWh）']) {const cell=document.createElement('th'); cell.textContent=title; cell.className='py-2'; header.append(cell)}
+    table.append(header)
+    for (const day of result.days) {
+      const row=document.createElement('tr')
+      for (const value of [day.day, day.driver_kwh, day.ac_kwh, day.other_kwh, day.total_kwh]) {const cell=document.createElement('td');cell.className='py-2';cell.textContent=value == null ? '—' : typeof value === 'number' ? value.toFixed(1) : value; row.append(cell)}
+      table.append(row)
+    }
+    target.replaceChildren(table)
+  } catch (error) {target.textContent=error.message}
+  finally {this.disabled=false}
+}
+</script>
+{% endif %}
+
 <div class="mb-6">
   <h1 class="text-2xl font-bold text-white">{{ t('statistics_title') }}</h1>
   <p class="text-slate-400 text-sm mt-1">{{ t('all_time') }}</p>

@@ -210,6 +210,10 @@ class MqttService:
     # ── Publishing ────────────────────────────────────────────────────────────
 
     def _access_signature(self, vin):
+        from api_backend import is_china
+        if is_china():
+            from cn_capabilities import COMMANDS, stored_permission
+            return tuple(stored_permission(vin, key, self.get_setting) for key in sorted(COMMANDS))
         from ui_command_access import COMMANDS, allowed, snapshot_key, account_hash, account_username
         try:
             username = account_username(self.get_setting)
@@ -222,6 +226,11 @@ class MqttService:
             return ('unavailable',)
 
     def _command_visible(self, vin, key):
+        from api_backend import is_china
+        if is_china():
+            from cn_capabilities import stored_permission
+            aliases = {"climate_auto": "ac_on", "climate_cool": "quick_cool", "climate_heat": "quick_heat", "climate_vent": "quick_vent", "fan_level": "set_fan_level", "recirculation": "set_recirc", "door_lock": "lock", "lock_toggle": "lock", "trunk": "open_trunk"}
+            return stored_permission(vin, aliases.get(key, key), self.get_setting)
         key = {'climate_auto': 'ac_on', 'climate_cool': 'quick_cool',
                'climate_heat': 'quick_heat', 'climate_vent': 'quick_vent',
                'fan_level': 'set_fan_level', 'recirculation': 'set_recirc',
@@ -249,7 +258,8 @@ class MqttService:
         must never delete an entity. → [[signal-absent-is-not-signal-zero]]"""
         if abilities is not None or car_type is not None:
             self._car_facts[data.vin] = (abilities, car_type)
-        self._climate_on[data.vin] = data.climate_on   # for the "A/C Off" command guard
+        self._climate_on[data.vin] = (None if getattr(data, 'market', 'EU') == 'CN' and 'climate_on' not in data.reported_fields
+                                    else data.climate_on)   # for the "A/C Off" command guard
         if absent_temps is not None:
             self.absent_temps[data.vin] = set(absent_temps)
         if not self.client:
@@ -368,6 +378,11 @@ class MqttService:
                                 retain=False)
 
         def pub(sub, val):
+            if getattr(data, "market", "EU") == "CN":
+                aliases = {"locked": "is_locked", "range": "range_km", "speed": "speed_kmh", "odometer": "odometer_km", "charging": "charging_status", "charge_voltage": "charge_voltage_v", "charge_current": "charge_current_a", "charge_power": "charge_power_kw", "plugged": "plug_connected", "windows": "windows_open"}
+                field = aliases.get(sub, sub)
+                if field in __import__("vehicle_snapshot").TELEMETRY_FIELDS and field not in data.reported_fields:
+                    val = None
             if isinstance(val, bool):
                 v = "ON" if val else "OFF"
             else:
@@ -518,6 +533,9 @@ class MqttService:
         device = self._device(vin)
 
         def cfg(component, key, conf):
+            if getattr(data, "market", "EU") == "CN" and key.startswith(("window_fl", "window_fr", "window_rl", "window_rr")):
+                self.client.publish(f"{_DISC}/{component}/{device_id}/{key}/config", "", retain=True)
+                return
             if "command_topic" in conf and not self._command_visible(vin, key):
                 self.client.publish(f"{_DISC}/{component}/{device_id}/{key}/config", "", retain=True)
                 return

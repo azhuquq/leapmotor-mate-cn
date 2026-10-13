@@ -641,7 +641,7 @@
     "win_fr": "Prawy przedni",
     "win_rl": "Lewy tylny",
     "win_rr": "Prawy tylny",
-    "win_sunshade": "Osłona przeciw\u00adsłoneczna",
+    "win_sunshade": "Osłona przeciw­słoneczna",
     "open_state": "Otwarty",
     "closed_state": "Zamknięty",
     "temperatures": "Temperatury",
@@ -1514,7 +1514,14 @@
     "place_none": "Bez taryfy miejsca",
     "place_invalid": "Sprawdź nazwę, współrzędne, promień (25–500 m) i cenę (0–100).",
     "place_closed_only": "Przypisz miejsce po zakończeniu ładowania.",
-    "place_unmerge_first": "Rozdziel połączone sesje przed zmianą miejsca."
+    "place_unmerge_first": "Rozdziel połączone sesje przed zmianą miejsca.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

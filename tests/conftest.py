@@ -2,6 +2,8 @@
 (the two dirs are separate import roots in the container, mirrored here) — and keep the suite's
 database out of whatever directory it happens to be run from."""
 import os
+# Upstream regression fixtures exercise EU; CN tests select their backend explicitly.
+os.environ.setdefault("MATE_MARKET", "EU")
 import pathlib
 import sys
 import tempfile

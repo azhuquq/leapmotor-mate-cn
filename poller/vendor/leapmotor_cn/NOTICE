@@ -1,0 +1,6 @@
+Protocol primitives adapted from ha-leapmotor-cn, poller/api_client.py (v0.2.4), under GNU AGPLv3.
+The Mate CN adapter supplies transport, persistence, routing, permissions and telemetry normalization.
+B01 wire shapes and capability semantics also reference leapmotor-app2api/docs/protocol.md and docs/abilities.md.
+No credentials, captured sessions, HAR files or APKs are included.
+
+Frontend WGS84/GCJ02 conversion, Gaode tile URLs and dark-map filter in web/static/mate-coordinates.js and mate-map.js are adapted from ha-leapmotor-cn/src/lib/geo.ts, src/lib/theme.ts and src/cards/map.ts (AGPLv3).

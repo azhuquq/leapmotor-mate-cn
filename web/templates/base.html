@@ -41,7 +41,7 @@
 {%- endif -%}
 {%- endmacro -%}
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="{{ lang|default('en') }}" class="h-full">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -68,6 +68,10 @@
   <script src="static/vendor/htmx.min.js"></script>
   <script src="static/vendor/apexcharts.min.js"></script>
   <script src="static/band-chart.js"></script>
+  {% if china_market is defined and china_market() %}
+  <script src="static/mate-coordinates.js"></script>
+  <script src="static/mate-map.js"></script>
+  {% endif %}
   <script>
     tailwind.config = {
       theme: {

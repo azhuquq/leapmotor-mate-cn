@@ -28,6 +28,7 @@ poller pass their own get/set via `accessor=`). Accumulates across sessions.
 """
 from __future__ import annotations
 import json
+import os
 from typing import Callable, Optional
 
 # feature_key -> {label, kind, signals(status-signal ids whose live value proves a sensor works),
@@ -242,6 +243,8 @@ def window_open_states(signals: dict, use_pct: bool) -> list:
     the flag nor the position for that window. `use_pct` gates the position-% fallback — the caller
     decides it (web: is_shown(vin, 'windows_pct'); poller: bool(vin)) so a car whose % sensor is
     untrusted never false-positives. The B10 is safe because it doesn't emit the % signals at all."""
+    if hasattr(signals, "snapshot"):
+        return [None, None, None, None]
     def _i(k):
         v = signals.get(k)
         try:
@@ -307,6 +310,12 @@ def command_shown(vin: str, command_key: str, get_setting: Optional[Callable] = 
     feature is known-absent on this model (`car_type` → MODEL_ABSENT, e.g. heated-seat commands on a
     T03 — #144); otherwise mapped to its gating feature (COMMAND_FEATURE), and commands with neither
     are always shown."""
+    from api_backend import is_china
+    if is_china() and os.environ.get("MATE_DEMO", "").lower() not in ("1", "true"):
+        from cn_capabilities import stored_permission
+        if get_setting is None:
+            from cn_backend import get_setting
+        return stored_permission(vin, command_key, get_setting)
     if not ability_supported(command_key, abilities):
         return False
     feat = COMMAND_FEATURE.get(command_key)
@@ -330,6 +339,9 @@ def charge_schedule_advanced(abilities) -> bool:
     """True if the car supports the full weekly charge schedule (end-time window + day-of-week chips).
     False ONLY when it declared its abilities and lists none of the weekly/cyclic codes (e.g. T03).
     Abilities unknown (None) → True: never hide a control on a guess (mirrors ability_supported)."""
+    from api_backend import is_china
+    if is_china():
+        return bool({14, 15, 20}.intersection(int(v) for v in (abilities or [])))
     if abilities is None:
         return True
     try:

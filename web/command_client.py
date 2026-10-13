@@ -312,8 +312,10 @@ class LeapmotorSession:
             import db_reader as _dr
             pin = _dr.get_operate_pin(vin)
         except Exception:                     # noqa: BLE001 — never let this break a command
+            if getattr(self._api, "_mate_cn_api", False):
+                self._api.operation_password = ""
             return
-        if pin:
+        if pin or getattr(self._api, "_mate_cn_api", False):
             self._api.operation_password = pin
 
     def _connect(self):
@@ -427,6 +429,8 @@ class LeapmotorSession:
 
     def _raw_status(self, vehicle=None):
         """Read status through the model path, with one remembered fallback per VIN."""
+        if getattr(self._api, "_mate_cn_api", False):
+            return self._api.get_vehicle_raw_status(vehicle or self._target())
         vehicle = vehicle or self._target()
         proven = self._status_car_type.get(vehicle.vin)
         if proven is not None:
@@ -464,6 +468,9 @@ class LeapmotorSession:
                     car = self._car(vin) if vin else None
                     if vin and car is None:
                         return None    # a car this account no longer lists: read no other one instead
+                    if getattr(self._api, "_mate_cn_api", False):
+                        from vehicle_snapshot import SnapshotSignals
+                        return SnapshotSignals(self._api.get_vehicle_snapshot(car or self._target()))
                     raw = self._raw_status(car)
                     data = (raw or {}).get("data") or {}
                     # C10/B10: numeric `signal` dict. T03/EU: named fields at top level.
@@ -479,6 +486,9 @@ class LeapmotorSession:
             for attempt in range(2):
                 try:
                     self._connect()
+                    if getattr(self._api, "_mate_cn_api", False):
+                        cur = self._api._config(self._target())
+                        return {"charge_limit_percent": cur.get("percent"), "charge_enabled": cur.get("isEnable"), "start_time": cur.get("beginTime"), "end_time": cur.get("endTime")}
                     raw = self._raw_status()
                     plan = ((raw.get("data") or {}).get("config") or {}).get("3") or {}
                     return {
@@ -516,6 +526,9 @@ class LeapmotorSession:
              #               (charge `cycles` proved Mon-first) — "position":"all","circle":"in",
              "set_id": "...", "wshld": "0"/"1"}
         NB `days` is a LIST OF INTS here (unlike the charge schedule's flag-string `cycles`)."""
+        from api_backend import is_china
+        if is_china():
+            return None
         with self._lock:
             for attempt in range(2):
                 try:
@@ -534,6 +547,9 @@ class LeapmotorSession:
              "datacontent": {"air_condition": {...climate vocab...}, "seat_setting": {...},
                              "steeringWheelHeatCtrl": {...}, "rearMirrorHeating": {...}, "syn_path": {...}}}
         Only the ENABLED dimensions are present in datacontent."""
+        from api_backend import is_china
+        if is_china():
+            return None
         with self._lock:
             for attempt in range(2):
                 try:
@@ -554,6 +570,9 @@ class LeapmotorSession:
                 try:
                     self._connect()
                     meta = self._api.get_car_picture(self._target())
+                    if getattr(self._api, "_mate_cn_api", False):
+                        from leapmotor_cn.protocol import parse_car_picture_url
+                        return self._api.download_picture(parse_car_picture_url(meta))
                     key = (meta.get("data") or {}).get("key") if isinstance(meta, dict) else None
                     if not key:
                         return None
@@ -570,6 +589,9 @@ class LeapmotorSession:
         """Raw per-vehicle car-picture package ZIP (all layers + the static render). Rarely changes
         → caller should cache. The web layer composes the LIVE image from it (car_image.compose),
         reflecting the charge cable / charging animation / trunk."""
+        from api_backend import is_china
+        if is_china():
+            return None
         with self._lock:
             for attempt in range(2):
                 try:
@@ -662,6 +684,11 @@ class LeapmotorSession:
                 try:
                     self._connect()
                     api, vin = self._api, self._target().vin
+                    if getattr(self._api, "_mate_cn_api", False):
+                        ec = self._raw_getec(begin_ts, end_ts)["data"]
+                        drv, ac, oth = (float(ec[k]) for k in ("driverEC", "acEC", "otherEC"))
+                        total = drv + ac + oth
+                        return {"driving_kwh": drv, "ac_kwh": ac, "other_kwh": oth, "total_kwh": total, "driving_pct": drv / total * 100 if total else 0, "ac_pct": ac / total * 100 if total else 0, "other_pct": oth / total * 100 if total else 0}
                     headers = build_consumption_last_week_headers(
                         sign_key=api.sign_key, device_id=api.device_id, carvin=vin,
                         begintime=str(begin_ts), endtime=str(end_ts), language=api.language,
@@ -716,6 +743,12 @@ class LeapmotorSession:
     def _raw_getec(self, begin_ts: int, end_ts: int):
         """Raw, UNMAPPED getEC response for [begin,end] (research probe helper). No lock/connect of
         its own — the caller holds the lock and has connected."""
+        if getattr(self._api, "_mate_cn_api", False):
+            if begin_ts is None or end_ts is None:
+                result = self._api.get_consumption_last_week_breakdown(self._target())
+            else:
+                result = self._api.get_consumption_breakdown(self._target(), begin_ts, end_ts)
+            return {"code": 0, "data": {"driverEC": result.driver_ec, "acEC": result.ac_ec, "otherEC": result.other_ec}}
         import json as _json
         from urllib.parse import quote
         build_consumption_last_week_headers = mate_compat.adapter_owned_headers
@@ -750,6 +783,9 @@ class LeapmotorSession:
         also carries the FUEL split (oc100km per 100km / ocMpg) alongside the electric one. On our
         BEV every fuel field is 0; on a range-extender this is the cloud's own L/100km, which is what
         we're here to CONFIRM. Raw on purpose — captures any fuel field the BEV mapping would drop."""
+        if getattr(self._api, "_mate_cn_api", False):
+            car = self._target()
+            return self._api._car_read("drivingrecord/getPlugInLastNweeks100kmEC", {"carvin": car.vin}, car)
         import json as _json
         from urllib.parse import quote
         build_consumption_weekly_rank_headers = mate_compat.adapter_owned_headers
@@ -844,6 +880,17 @@ class LeapmotorSession:
                 try:
                     self._connect()
                     api, vin = self._api, self._target().vin
+                    if getattr(api, "_mate_cn_api", False):
+                        car = self._target()
+                        mileage = api.get_mileage(car).get("data") or {}
+                        days = int(mileage.get("deliveryDays") or 0)
+                        if not days:
+                            return None
+                        end = int(_time.time())
+                        split = api.get_consumption_breakdown(car, end - (days + 1) * 86400, end)
+                        total = split.driver_ec + split.ac_ec + split.other_ec
+                        km = float(mileage.get("totalmileage") or 0)
+                        return {"total_energy_kwh": total, "total_mileage_km": km, "lifetime_eff_kwh_100km": total / km * 100 if km else None, "ec_driving_kwh": split.driver_ec, "ec_ac_kwh": split.ac_ec, "ec_other_kwh": split.other_ec, "driving_kwh": total, "parked_kwh": None, "source": "official_daily_driving"}
                     now_ms = int(_time.time() * 1000); b_ms = now_ms - 7 * 86400 * 1000
                     h = build_signed_headers(
                         sign_key=api.sign_key, device_id=api.device_id, vin=vin, language=api.language,
@@ -944,6 +991,9 @@ def detect_vehicle(user: str, pwd: str, pin: str) -> dict:
 
     `vin`/`car_type` stay at the top level for the first car so nothing that reads the old shape has
     to change; `vehicles` is the list the wizard walks."""
+    from api_backend import is_china
+    if is_china():
+        return {"error": "請使用中國區短信登入"}
     try:
         api = LeapmotorApiClient(
             username=user,
@@ -1004,6 +1054,9 @@ def get_charge_schedule() -> dict | None:
 
 
 def get_climate_schedule() -> list | None:
+    from api_backend import is_china
+    if is_china():
+        return None
     return _session.get_climate_schedule()
 
 
@@ -1356,6 +1409,9 @@ def ac_off():
 def quick_cool():        return _session.execute(lambda api, vin: api.quick_cool(vin))
 def quick_heat():        return _session.execute(lambda api, vin: api.quick_heat(vin))
 def windshield_defrost():
+    from api_backend import is_china
+    if is_china():
+        return _session.execute(lambda api, vin: api.windshield_defrost(vin))
     # Windshield defrost = cmd 170 with wshld=2 (reads back as signal 1945=2). Matches the official
     # app EXACTLY (captured on-car 2026-06-21: on=1, mode=0, defr/1945=2, fresh air, fan 7). The lib's
     # dedicated windshield_defrost ACTION (no params) wrongly engaged plain HEAT (mode 3, defr stayed 0).
@@ -1365,6 +1421,9 @@ def windshield_defrost():
 # Rapid ventilation + temperature: the whole climate is cmd 170 (kerniger payload). "ac_on"
 # maps to cmd 170. mode wind = pure ventilation; temperature field sets the target & starts the climate.
 def quick_vent():
+    from api_backend import is_china
+    if is_china():
+        return _session.execute(lambda api, vin: api.quick_vent(vin))
     # Pure ventilation = mode "wind" (reads back as signal 3713=4) + FRESH AIR (circle=out, recirc off)
     # + fan 4. CRITICAL: the target temperature must NOT sit below the cabin, or the car engages COOLING
     # instead of plain vent — seen on-car 2026-06-21: a hardcoded temp=26 with a ~28° cabin came back as
@@ -1479,6 +1538,9 @@ def _t03_force_manual(operate: str, mode: str) -> tuple[str, str]:
         return "manual", ("cold" if mode == "nohotcold" else mode)
     return operate, mode
 def _windows_native(pct) -> str:
+    from api_backend import is_china
+    if is_china():
+        return str(min((0, 2, 5, 10), key=lambda n: abs(n * 10 - int(pct))))
     try: pct = max(0, min(int(pct), 100))
     except (TypeError, ValueError): pct = 0
     full = _WINDOWS_SCALE.get(_session_car_type(), 100)
@@ -1527,3 +1589,22 @@ def send_destination(name, address, lat, lon):
     return _session.execute(lambda api, vin: api.send_destination(
         vin, address=address, address_name=name,
         latitude=float(lat), longitude=float(lon)))
+
+
+def healthy_charging_on():
+    return _session.execute(lambda api, vin: api.healthy_charging(vin, on=True))
+
+
+def healthy_charging_off():
+    return _session.execute(lambda api, vin: api.healthy_charging(vin, on=False))
+
+
+def get_daily_energy(start, end):
+    with _session._lock:
+        _session._connect()
+        return _session._api.get_daily_energy(_session._target(), start, end)
+
+
+def get_fresh_snapshot(vin=None):
+    signals = _session.get_fresh_signals(vin)
+    return getattr(signals, 'snapshot', None)

@@ -442,7 +442,7 @@
       <span id="badge-battery" class="text-sm font-bold px-3 py-1 rounded-full whitespace-nowrap inline-flex items-center gap-1
         {% if charging %}text-yellow-400 bg-yellow-400/10 border border-yellow-400/30
         {% else %}text-slate-400 bg-slate-700 border border-slate-600{% endif %}">
-        {{ ico.mdi('battery-charging' if charging else 'battery', 'w-4 h-4') }} {% if charging %}{{ t('charging') }}{% else %}{{ t('not_charging') }}{% endif %}
+        {{ ico.mdi('battery-charging' if charging else 'battery', 'w-4 h-4') }} {% if charging %}{{ t('charging') }}{% else %}{{ charge_phase_label(status) }}{% endif %}
       </span>
       {% endif %}
     </div>
@@ -450,3 +450,13 @@
 
   </div>{# /RIGHT column #}
 </div>
+
+{% if china_market() and healthy_charging_shown %}
+<div class="mt-5">
+  <h3 class="text-sm font-medium text-slate-300 mb-3">健康充電</h3>
+  <div class="grid grid-cols-2 gap-3">
+    {{ action_tile('healthy_charging_on', '<span aria-hidden="true">⚡</span>', '開啟健康充電', '開啟') }}
+    {{ action_tile('healthy_charging_off', '<span aria-hidden="true">⚡</span>', '關閉健康充電', '關閉') }}
+  </div>
+</div>
+{% endif %}

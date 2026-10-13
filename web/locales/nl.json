@@ -1514,7 +1514,14 @@
     "place_none": "Geen locatietarief",
     "place_invalid": "Controleer naam, coördinaten, straal (25–500 m) en prijs (0–100).",
     "place_closed_only": "Wijs de locatie toe nadat het laden is voltooid.",
-    "place_unmerge_first": "Splits samengevoegde sessies voordat u hun locatie wijzigt."
+    "place_unmerge_first": "Splits samengevoegde sessies voordat u hun locatie wijzigt.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

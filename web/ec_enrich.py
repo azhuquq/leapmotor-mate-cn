@@ -120,6 +120,9 @@ def _enabled() -> bool:
     # Default ON: the feature is always-on (no UI toggle). It degrades gracefully to the SoC estimate
     # when the cloud lacks a trip's getEC, so being on is never worse than off. A latent DB override
     # (`ec_trip_energy_enabled=0`) stays available for support/debug, but isn't exposed in the UI.
+    from api_backend import is_china
+    if is_china():
+        return False  # CN getEC has day granularity, not individual-trip energy.
     return db_reader.get_setting("ec_trip_energy_enabled", "1") == "1"
 
 
@@ -256,6 +259,9 @@ def convert_trip(trip_id: int) -> dict:
     when the cloud has no separable record for it (e.g. trips too close together, merged by the cloud
     into one driving session). For a MERGED group it converts the COMBINED drive (one cloud session).
     Returns: {ok, reason?, ec?}."""
+    from api_backend import is_china
+    if is_china():
+        return {"ok": False, "error": "中國區雲端能耗僅到日，不能用作單趟能耗；保留本地估算"}
     found = db_reader.trip_group(trip_id)
     if not found:
         return {"ok": False, "reason": "not_found"}

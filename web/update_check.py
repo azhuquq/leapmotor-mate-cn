@@ -94,6 +94,10 @@ def get_update_status(current: str) -> dict:
     libraries than the bundled ones): that one never arrives on its own, and is the single case
     where the user must actually go and download something.
     """
+    from api_backend import is_china
+    if is_china():
+        return {"available": False, "latest": None, "url": None,
+                "desktop": False, "blocked": None, "newer_app": None}
     _maybe_refresh()
     latest = db_reader.get_setting("update_latest", "") or None
     available = bool(latest and _ver_tuple(latest) > _ver_tuple(current))

@@ -1514,7 +1514,14 @@
     "place_none": "Sem tarifa do local",
     "place_invalid": "Verifique nome, coordenadas, raio (25–500 m) e preço (0–100).",
     "place_closed_only": "Associe o local após terminar o carregamento.",
-    "place_unmerge_first": "Separe as sessões unidas antes de alterar o local."
+    "place_unmerge_first": "Separe as sessões unidas antes de alterar o local.",
+    "cn_phase_stopped": "Charging stopped",
+    "cn_phase_fault": "Charging fault",
+    "cn_phase_deferred": "Waiting for scheduled charging",
+    "cn_phase_paused": "Charging paused",
+    "cn_phase_unknown": "Charging state unknown",
+    "cn_unsupported": "This feature is not available for the China market yet.",
+    "cn_daily_energy": "Official daily energy totals"
   },
   "months": {
     "full": [

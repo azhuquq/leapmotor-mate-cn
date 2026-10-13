@@ -119,6 +119,10 @@ class Recorder:
         # reads as plugged, and must not RESUME a session left open by the previous run — the car
         # is holding the cable, not charging (#243).
         is_charging = data.charging_status > 0 or (data.plug_connected and not data.charge_deferred)
+        if getattr(data, 'market', 'EU') == 'CN':
+            is_charging = (data.charging_status > 0 or data.charge_state_code == 6
+                           or data.charge_state_code not in (0, 1, 2, 3, 4, 5, 6))
+            is_charging = is_charging and data.vehicle_state != 'driving'
         is_driving  = data.gear in ("D", "R", "N") or data.speed_kmh > 1
 
         open_charge = self._db.get_open_charge(self._vehicle_id)
@@ -233,7 +237,7 @@ class Recorder:
         # During active charge: track peak power, and sum the wallbox counter's rises so the billed
         # energy is MEASURED (reset/race-proof). Both are persisted → survive a poller restart mid-charge.
         if self._sm.state == State.CHARGING and self._active_charge_id:
-            if data.charge_power_kw is not None and data.charge_power_kw > self._max_charge_kw:
+            if (data.market != 'CN' or data.charging_status > 0) and data.charge_power_kw is not None and data.charge_power_kw > self._max_charge_kw:
                 self._max_charge_kw = data.charge_power_kw
                 self._db.update_charge_max_power(self._active_charge_id, self._max_charge_kw)
             if self._charge_at_wallbox:

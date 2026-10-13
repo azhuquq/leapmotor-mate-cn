@@ -1,3 +1,32 @@
+# LeapMotor Mate 中國區
+
+中國市場零跑帳號與車輛的本地行程記錄、充電統計及遠端控制版本。基於 Mate 4.15.3，參照 `ha-leapmotor-cn` 與 `leapmotor-app2api`；首個驗收目標是 **B01 2025、全權限共享帳號**。
+
+## 快速啟動
+
+需要 Docker 與 Docker Compose v2：
+
+```sh
+cd ~/Develop/leapmotor-mate-cn
+docker compose up -d --build
+```
+
+開啟 **http://localhost:4000**，以中國大陸手機短信驗證碼登入。先在官方 App 接受共享，再為每台車填寫電池可用容量及選填的操作 PIN。預設繁體中文、人民幣及中國標準時間，不需要國際版憑證或帳號密碼。
+
+登入與續期、被動車況、每 VIN 路由、共享權限、本地記錄、MQTT 與既有中國區控制已接入。雲端受理不會直接顯示成車輛執行成功。
+
+**本次僅完成離線與合成資料驗證，尚未完成 B01 真車控車驗收。** 原生空調排程、prepare-car、導航下發、充電槍解鎖、直接充電啟停與官方逐筆歷史匯入尚未支援。
+
+完整的[設定、支援表與驗證方式](docs/CHINA-MARKET.md)。持久資料在 `./data`，備份時請連同 `secret.key` 保存。
+
+此分支須用原始碼建置，上游公共鏡像與桌面發行包沒有中國區轉接器。
+
+## 上游國際版參考
+
+下方保留原專案說明、致謝與歷史功能介紹；其發行包、帳號設定及車型驗收範圍屬於國際版。
+
+---
+
 # LeapMotor Mate
 
 **v4.15.3:** the wallbox's line on a charge's chart is **drawn from readings Mate keeps**, so it stays after Home Assistant purges its history, and the chart opens faster ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm). On a phone the times under a chart no longer run into each other. In **4.15.2**: a charge's chart comes as its row opens ([#417](https://github.com/ProtossBlaster/leapmotor-mate/pull/417), @arekm).
@@ -17,7 +46,7 @@ See [release notes and upgrade impact](docs/releases/v4.15.3.md).
 
 Cloud commands are enabled on **every model** (since 4.2.0). What a car may do is decided by the data its own cloud entry publishes — abilities, account rights, control module — and by the cloud's own refusal, never by the model name; a command your model does not have is refused by the cloud and Mate stops offering it. **On‑car confirmation of physical execution exists only for the B10**: acceptance by the cloud is not proof the car carried a command out. European spec (the Leapmotor lineup distributed by Stellantis/Leapmotor).
 
-Chinese-market accounts are not supported by Mate. [China cloud API research](docs/CHINA-API-RESEARCH.md) documents a separately verified read-only B05 flow and the remaining integration work.
+This section describes the upstream international edition. This fork implements a China adapter; see [the China-market guide](docs/CHINA-MARKET.md).
 
 > 🇮🇹 [Versione italiana più sotto.](#leapmotor-mate--italiano)
 

@@ -158,6 +158,8 @@ def maybe_trigger(db, client, data, api_lock, now: float = None, vehicle=None) -
     `vehicle` is the car this frame came from. It decides both whose edge is being watched and
     WHICH CAR gets preheated — the commands used to go to `client._vehicle`, the first car on the
     account, so with two cars a Ready edge on the second would have warmed up the first."""
+    if getattr(client._api, "_mate_cn_api", False):
+        return False
     vehicle = vehicle or client._vehicle
     vin = getattr(vehicle, "vin", "") or ""
     now = time.monotonic() if now is None else now

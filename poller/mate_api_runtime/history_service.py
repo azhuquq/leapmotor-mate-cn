@@ -8,6 +8,8 @@ _guard = threading.Lock()
 
 def start_history_worker(on_login=None):
     """`on_login` hears every login the worker's own client spends — see history_worker."""
+    if os.environ.get("MATE_MARKET", "CN").upper() == "CN":
+        return  # CN has no verified individual cloud-history contract.
     global _thread
     # Cloud history is a READ: it does not follow the COMMAND qualification. An account
     # retained on the previous client — anything that is not a pure B10 account — still

@@ -315,7 +315,8 @@ WALLBOX_ENERGY_KWH = "wallbox_energy_kwh"
 # A reading that is a sample of a charge: the car's own flag, or current entering the pack while parked.
 # The partial index below is built on it; web/db_reader._charging_sample asks the same with a table alias.
 CHARGE_SAMPLE = ("charging = 1 OR (charge_current_a <= -0.5 AND "
-                 "COALESCE(speed_kmh, 0) <= 2 AND COALESCE(gear, 'P') = 'P')")
+                "COALESCE(speed_kmh, 0) <= 2 AND COALESCE(gear, 'P') = 'P')")
+
 
 
 def _add_column(conn, sql: str) -> None:
@@ -421,6 +422,9 @@ def ensure_schema(conn) -> None:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN remaining_charge_min INTEGER DEFAULT NULL")
     if "charge_voltage_v" not in cols:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN charge_voltage_v REAL DEFAULT NULL")
+    for name, sql_type in (("cn_charge_state", "INTEGER"), ("market", "TEXT"), ("collect_time_ms", "REAL")):
+        if name not in cols:
+            _add_column(conn, f"ALTER TABLE positions ADD COLUMN {name} {sql_type} DEFAULT NULL")
     if "charge_current_a" not in cols:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN charge_current_a REAL DEFAULT NULL")
     # The battery-health estimate asks this — _charging_sample()'s own "the flag, OR current +
@@ -435,6 +439,8 @@ def ensure_schema(conn) -> None:
     # inside the schema script fails on a fresh database and takes the WHOLE script down with it.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_charge_sample ON positions(vehicle_id, recorded_at)"
                  " WHERE " + CHARGE_SAMPLE)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_cn_charge_sample ON positions(vehicle_id, recorded_at)"
+                 " WHERE market = 'CN' AND cn_charge_state = 1 AND charging = 1")
     if "ready" not in cols:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN ready INTEGER DEFAULT NULL")
     if "charge_completed" not in cols:

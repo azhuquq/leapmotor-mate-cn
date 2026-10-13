@@ -318,11 +318,13 @@
     const allPts = [];
     segments.forEach(function (trip) { trip.forEach(function (run) { run.points.forEach(function (p) { allPts.push(p); }); }); });
     if (!allPts.length) return;
-    const map = L.map('report-map', { preferCanvas: true }).fitBounds(L.latLngBounds(allPts).pad(0.05));
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const map = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('report-map', { preferCanvas: true }).fitBounds(L.latLngBounds(allPts).pad(0.05));
+    {% if china_market is defined and china_market() %}MateMap.addTiles(map);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       referrerPolicy: 'origin'   // keep OSM tiles loading under Firefox strict tracking protection
     }).addTo(map);
+{% endif %}
     // White casing under a blue line so each route stays legible over any road colour. A
     // gap-bridge run (real signal loss — see db_reader._split_track_gaps) gets its own white
     // casing too, then a bold magenta dash on top — a colour used nowhere else on this map

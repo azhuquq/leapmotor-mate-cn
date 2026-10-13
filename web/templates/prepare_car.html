@@ -77,6 +77,7 @@
 {% endmacro %}
 
 {% block content %}
+{% if china_market() %}<div class="rounded-xl bg-slate-900 border border-slate-700 p-6 text-slate-300">此功能尚未有完整中國區協定，暫未開放。即時空調及座椅控制可在「控制」頁使用。</div>{% else %}
 <div class="mb-5">
   <h1 class="text-xl font-bold text-white flex items-center gap-2">
     {{ ico.mdi('car-side', 'w-6 h-6 text-brand') }} {{ t('nav_prepare_car') }}
@@ -486,4 +487,5 @@ function readySyncUI() {
   readySyncUI();
 })();
 </script>
+{% endif %}
 {% endblock %}

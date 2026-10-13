@@ -142,6 +142,8 @@ def ensure_account_cert(api) -> bool:
     asleep car that poll-fails a lot), which otherwise surfaces as "Could not find the TLS
     certificate file" and forces an unnecessary, rate-limit-risky re-login (#64). Returns True if
     the files are present (or were just restored), False if we couldn't materialize them."""
+    if getattr(api, "_mate_cn_api", False):
+        return True
     if getattr(api, '_mate_new_api', False) is True:
         from leapmotor_cloud.certificate_validation import certificate_usable
         return certificate_usable(api.account_cert_file, api.account_key_file)

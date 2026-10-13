@@ -180,6 +180,8 @@ def _mqtt_car_type(client, vin: str = "") -> str:
 
 def _mqtt_windows_native(client, pct: int, vin: str = "") -> str:
     """The native window value for the car the command is FOR."""
+    if getattr(client._api, "_mate_cn_api", False):
+        return str(min((0, 2, 5, 10), key=lambda n: abs(n * 10 - int(pct))))
     full = _WINDOWS_SCALE.get(_mqtt_car_type(client, vin), 100)
     try:
         pct = max(0, min(int(pct), 100))
@@ -286,6 +288,16 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
     state only refreshed on the next scheduled poll (up to 30s when parked), which
     is why it looked stale/out of sync. B10 commands the cloud accepts-but-ignores
     (e.g. full A/C off) stay best-effort."""
+    if getattr(client._api, "_mate_cn_api", False):
+        from cn_capabilities import permission
+        try:
+            car = client._api._vehicle(vin)
+        except Exception:
+            log.warning("中國區 MQTT 未取得可用車輛資料，未發送控制")
+            return
+        if car is None or not permission(car, cmd)[0]:
+            log.warning("中國區 MQTT 控制未支援或未獲授權")
+            return
     api = client._api
     # Authorise with the PIN of the car this command NAMES (#186, @cookingeek). MQTT is not scoped
     # to a picked car — the topic carries the VIN — so on two cars with different PINs, using the
@@ -293,11 +305,13 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
     # that happens only sometimes and never says why. No per-car PIN → the install-wide one.
     try:
         _pin = db.get_operate_pin(vin)
-        if _pin:
+        if _pin or getattr(api, "_mate_cn_api", False):
             api.operation_password = _pin
     except Exception:  # noqa: BLE001 — a PIN lookup must never stop a command from being tried
+        if getattr(api, "_mate_cn_api", False):
+            api.operation_password = ""
         pass
-    optimistic = _MQTT_OPTIMISTIC.get(cmd)
+    optimistic = None if getattr(api, "_mate_cn_api", False) else _MQTT_OPTIMISTIC.get(cmd)
     try:
         with _API_LOCK:  # serialize against the poll loop's get_status (shared HTTP session)
             if cmd == "lock":          api.lock_vehicle(vin)
@@ -335,6 +349,8 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
                     return
                 # Echo the plan back as the entity's state, so Home Assistant shows what's actually
                 # set instead of a blank box (no extra cloud call — this is what we just wrote).
+                if getattr(api, "_mate_cn_api", False) and getattr(api.last_new_command_receipt, "outcome", "") != "confirmed":
+                    return
                 service.publish_state(vin, "charge_schedule",
                                       json.dumps(applied, separators=(",", ":")))
             elif cmd == "door_lock":      # single HA lock entity (#37): value = LOCK / UNLOCK
@@ -446,7 +462,7 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
     # Command succeeded → boost a fast re-poll so the car's REAL state reaches HA in a few seconds.
     # We no longer optimistically publish the entity state — HA must never show a faked value that the
     # car then contradicts ("Mate says closed, the car is open"). The boost below brings the truth.
-    if optimistic and service:
+    if optimistic and service and not getattr(api, "_mate_cn_api", False):
         # Still keep the "A/C Off" guard's reference (last_climate_on) in sync with what we just sent —
         # it's otherwise only written by a POLL, so right after a Quick Cool/Heat (before the next poll)
         # it held the old "off" value and the following "A/C Off" was silently skipped (#67).
@@ -484,6 +500,8 @@ def _write_comfort_state(db, data):
              "steering_heat": data.steering_heat,
              "mirror_heat_left": data.mirror_heat_left,
              "mirror_heat_right": data.mirror_heat_right}
+    if getattr(data, 'market', 'EU') == 'CN':
+        state = {key: value if key in data.reported_fields else None for key, value in state.items()}
     blob = json.dumps(state, separators=(",", ":"))
     if _last_comfort.get(data.vin) == blob:
         return
@@ -812,6 +830,8 @@ _BAD_CREDS_MARKS = ("password", "incorrect", "wrong account", "account does not 
 
 
 def _is_bad_credentials(msg: str) -> bool:
+    if "短信" in msg or "登入資料已失效" in msg:
+        return True
     low = (msg or "").lower()
     return any(s in low for s in _BAD_CREDS_MARKS)
 
@@ -1325,6 +1345,8 @@ def main():
             wait = 3600.0 if bad_creds else _login_backoff
             if session_share.login_attempted(exc):
                 acct.note_link(db, outcome, reason, next_retry_ts=time.time() + wait, bad_creds=bad_creds)
+            from api_backend import is_china
+            cn_wait_session = db.get_setting("cn_shared_session", "") if is_china() else None
             waited = 0.0
             while waited < wait:
                 # Home Assistant hears it too, for every car this install has seen, and again
@@ -1336,6 +1358,9 @@ def main():
                 waited += 5.0
                 # the loop's heartbeat, so a login the cloud keeps refusing is not a dead poller
                 db.set_setting("last_loop_ts", str(time.time()))
+                if cn_wait_session is not None and db.is_setup_complete() and db.get_setting("cn_shared_session", "") != cn_wait_session:
+                    log.info("Chinese-market session changed — retrying startup login")
+                    break
                 _now = load_config(db)
                 if (_now["username"], _now["password"], _now["pin"]) != _startup_login:
                     log.info("Credentials changed during startup login — restarting to apply")

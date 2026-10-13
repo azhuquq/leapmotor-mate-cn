@@ -106,9 +106,9 @@ def test_the_help_text_covers_a_typed_figure_too():
         low = text.lower()
         assert ("wallbox" in low or "meter" in low or "contator" in low or "contatore" in low
                 or "zähler" in low or "contador" in low or "compteur" in low or "licznik" in low
-                or "meter" in low), f"{locale.name}: the sentence names no billing basis at all"
+                or "電表" in low), f"{locale.name}: the sentence names no billing basis at all"
         assert ("typed" in low or "entered" in low or "inserit" in low or "eingetragen" in low
                 or "introducid" in low or "saisi" in low or "ingevoerd" in low or "wpisan" in low
-                or "introduzid" in low), \
+                or "introduzid" in low or "輸入" in low), \
             (f"{locale.name}: blended_price_help still covers only a metered charge, not a figure "
              f"typed from the column — the case in #346")

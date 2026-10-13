@@ -5,6 +5,8 @@ prepare_installation()
 import json
 import logging
 import os
+import re
+import math
 import sys
 import threading
 import time
@@ -278,7 +280,7 @@ def _money(x) -> str:
     # to whole units would ROUND the figure on screen, and Mate shows full precision, never a rounded
     # number (Silvio's rule). `dec` stays the true ISO minor-unit count; this is only the display floor.
     s = f"{float(x):,.{max(cur['dec'], 2)}f}"
-    if db_reader.get_language() != "en":
+    if db_reader.get_language() not in ("en", "zh-TW"):
         # swap separators: 1,234.50 -> 1.234,50
         s = s.translate(str.maketrans({",": ".", ".": ","}))
     sym = cur["symbol"]
@@ -297,7 +299,7 @@ def _price_3(x) -> str:
     if x is None:
         return "\u2014"
     s = f"{float(x):,.3f}"
-    if db_reader.get_language() != "en":
+    if db_reader.get_language() not in ("en", "zh-TW"):
         s = s.translate(str.maketrans({",": ".", ".": ","}))
     return s
 
@@ -382,6 +384,8 @@ def _range_estimates(range_km, soc):
 
 
 templates.env.globals.update(
+    china_market=lambda: __import__("api_backend").is_china(),
+
     dist_unit=units.dist_unit, speed_unit=units.speed_unit, temp_unit=units.temp_unit,
     pressure_unit=units.pressure_unit, eff_unit=units.eff_unit, elev_unit=units.elev_unit,
     dist_val=units.dist_val, speed_val=units.speed_val, temp_val=units.temp_val,
@@ -446,6 +450,9 @@ async def setup_check(request: Request, call_next):
             return Response("authentication required", status_code=401)
         return RedirectResponse(request.headers.get("x-ingress-path", "") + "/login")
     # Setup wizard gate (unchanged).
+    from api_backend import is_china
+    if is_china() and (path == '/api/nav/send' or path == '/api/climate-schedule' or path.startswith('/api/prepare-car/')):
+        return JSONResponse({'ok': False, 'unsupported': True, 'error': '此原生功能尚未支援中國區，未發送請求'}, status_code=409)
     if path.startswith("/setup") or path.startswith("/api/"):
         return await call_next(request)
     if os.environ.get("LEAPMOTOR_USER"):  # env-var dev mode skips the wizard
@@ -605,6 +612,12 @@ def _ctx(**kwargs):
     def ago(seconds) -> str:
         return _ago(t, seconds)
 
+    def charge_phase_label(status) -> str:
+        phase = (status or {}).get("charge_phase")
+        if (status or {}).get("market") == "CN" and phase in ("stopped", "fault", "deferred", "paused", "unknown"):
+            return t("cn_phase_" + phase)
+        return t("state_charge_complete") if (status or {}).get("charge_completed") else t("not_charging")
+
     wallbox_enabled = db_reader.get_setting("wallbox_enabled", "0") == "1"
     # Active wallbox profile: shown in sidebar + page title + profiles panel.
     # Only resolved when wallbox is on AND a profile has been loaded.
@@ -644,6 +657,7 @@ def _ctx(**kwargs):
             shown=lambda _name: capability_profile.command_shown(
                 _vin, _name, car_type=(_veh or {}).get("car_type", "")))
     return {**kwargs, "api_v2_command_css": _command_css, "lang": lang, "t": t, "version": MATE_VERSION, "demo": _IS_DEMO,
+            "charge_phase_label": charge_phase_label,
             "unconfigured_cars": ", ".join(
                 (v.get("car_type") or (v.get("vin") or "")[-6:]) for v in _unconfigured),
             "vehicles": _vehicles,
@@ -659,9 +673,11 @@ def _ctx(**kwargs):
             # has. So the "remove everything" button is offered on the Mac only.
             "shell_platform": os.environ.get("MATE_DESKTOP_PLATFORM", ""),
             "update": update_check.get_update_status(MATE_VERSION),
-            "prepare_car_shown": not capability_profile.model_hidden(_car_type, "prepare_car"),
+            "prepare_car_shown": not __import__("api_backend").is_china() and not capability_profile.model_hidden(_car_type, "prepare_car"),
             "unlock_charger_shown": capability_profile.command_shown(
                 (_veh or {}).get("vin", ""), "unlock_charger", abilities=_abilities),
+            "healthy_charging_shown": capability_profile.command_shown(
+                (_veh or {}).get("vin", ""), "healthy_charging", abilities=_abilities),
             # Charge-schedule view: cars without weekly/cyclic charge abilities (e.g. T03) get the
             # simple start-time + SoC form — no end-time window, no day chips (#146).
             "charge_schedule_advanced": capability_profile.charge_schedule_advanced(_abilities),
@@ -2670,6 +2686,9 @@ def _wins_pct() -> int:
 # the values that move the windows — a continuous slider would let them pick an ignored native (e.g. 3).
 _WINDOWS_STOPS = {"B10": [0, 20, 50, 100], "C10": [0, 20, 50, 100], "B05": [0, 20, 50, 100]}
 def _wins_stops() -> list:
+    from api_backend import is_china
+    if is_china():
+        return [0, 20, 50, 100]
     vehicle, _ = db_reader.get_vehicle()
     ct = ((vehicle or {}).get("car_type") or "").upper()
     return _WINDOWS_STOPS.get(ct, list(range(0, 101)))
@@ -2700,6 +2719,8 @@ def _parse_vehicle_status(sig: dict, vin: str | None = None, cmd_pct: int | None
     the per-car window-% fallback against its capability profile (#62). `cmd_pct` = the last
     position WE commanded — used as the window-opening % on cars whose % sensor is dead (B10), shown
     only for windows the open/closed flag confirms open."""
+    if hasattr(sig, "snapshot"):
+        return sig.snapshot.panel()
     def f(k):
         try: return float(sig.get(k)) if sig.get(k) is not None else None
         except (TypeError, ValueError): return None
@@ -2952,7 +2973,7 @@ async def settings_page(request: Request):
                 "db_size_mb": round(db_reader.get_db_size_bytes() / 1048576, 1)}
     from datetime import date
     from cloud_import_policy import import_from, past_months, trips_enabled
-    settings["cloud_import_available"] = True
+    settings["cloud_import_available"] = not __import__("api_backend").is_china()
     settings["cloud_import_trips"] = trips_enabled(db_reader._get())
     # The earlier months on offer: September 2026 to last month (cloud_import_policy.FIRST_MONTH).
     # Each says what it adds, on a line under the menu: the count does not fit inside it — at
@@ -4646,6 +4667,11 @@ async def account_logout(request: Request):
     Only the stored login is cleared and the setup wizard re-opened. The poller notices the
     credential change and restarts itself to re-authenticate as the new account (run.sh →
     container restart); history is keyed by VIN, so the same car's records carry over."""
+    from api_backend import is_china
+    if is_china():
+        from cn_backend import connect
+        with connect() as cn_db:
+            cn_db.execute("DELETE FROM settings WHERE key='cn_shared_session' OR key LIKE 'cn_pending_%' OR key LIKE 'cn_capabilities_%' OR key LIKE 'leapmotor_pin_%'")
     db_reader.set_setting("leapmotor_user", "")
     db_reader.set_secret("leapmotor_pass", "")
     db_reader.set_secret("leapmotor_pin", "")
@@ -4735,7 +4761,7 @@ async def set_language(request: Request):
     (HX-Refresh) so every server-rendered string switches to the new language."""
     form = await request.form()
     lang = form.get("language", "en")
-    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es") else "en")
+    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW") else "en")
     return Response(status_code=204, headers={"HX-Refresh": "true"})
 
 
@@ -5195,6 +5221,8 @@ async def missed_charges_apply(request: Request):
 # ── Command routes ────────────────────────────────────────────────────────────
 
 _COMMANDS = {
+    "healthy_charging_on": command_client.healthy_charging_on,
+    "healthy_charging_off": command_client.healthy_charging_off,
     "lock":              command_client.lock,
     "unlock":            command_client.unlock,
     "open_trunk":        command_client.open_trunk,
@@ -5256,6 +5284,8 @@ async def set_seat(request: Request, func: str, position: str):
     import asyncio
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.seat_comfort(func, position, level))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         side = "driver" if position == "driver" else "passenger"
         _veh, _ = db_reader.get_vehicle()
@@ -5278,6 +5308,8 @@ async def set_windows_api(request: Request):
     import asyncio
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.set_windows(pct))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         db_reader.write_optimistic_status({"windows_open": 1 if pct > 0 else 0})
         # Remember the commanded position: the B10 can't report its real window % (dead sensor),
@@ -5299,6 +5331,8 @@ async def set_climate_temp_api(request: Request):
     import asyncio
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.set_climate_temp(temp, inside))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         import time
         db_reader.boost_selected_car(60)   # re-poll THIS car within seconds, not 30s
@@ -5317,6 +5351,8 @@ async def set_fan_level_api(request: Request):
     import asyncio
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.set_fan_level(level))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         import time
         db_reader.boost_selected_car(60)   # re-poll THIS car within seconds, not 30s
@@ -5333,6 +5369,8 @@ async def set_recirc_api(request: Request):
     import asyncio
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.set_recirc(on))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         import time
         db_reader.boost_selected_car(60)   # re-poll THIS car within seconds, not 30s
@@ -6003,6 +6041,8 @@ async def set_charge_limit(request: Request):
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.set_charge_limit(percent, simple=simple)
     )
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         # Mirror the new limit into settings so the Overview hero shows the right "to X%" at once,
         # before the next poll re-reads it from the car.
@@ -6046,6 +6086,8 @@ async def save_charge_schedule_api(request: Request):
     ok, msg = await asyncio.get_event_loop().run_in_executor(
         None, lambda: command_client.save_charge_schedule(
             enabled=enabled, soc_limit=soc, start_time=start, end_time=end, cycles=cycles, simple=simple))
+    if ok and "cloud accepted" in msg.lower():
+        return HTMLResponse('<span data-warn="1" style="color:#fbbf24">' + i18n.get_t(db_reader.get_language())("command_accepted_unconfirmed") + "</span>")
     if ok:
         # Refresh the Overview's cached window straight away (#173). The poller re-reads it from the
         # car only every 30 min; without this the chip would keep showing the OLD times right after
@@ -6264,6 +6306,8 @@ def _windows_open_now(sig: dict) -> bool:
     """Any window open, by the same flag-OR-position-% rule the Vehicle page uses (#62) — so the
     post-command verification of open/close_windows confirms on the T03 (whose open/closed flags
     stay 0 even when open) instead of timing out and wiping the optimistic state."""
+    if hasattr(sig, "snapshot"):
+        return sig.snapshot.data.windows_open
     vehicle, _ = db_reader.get_vehicle()
     vin = (vehicle or {}).get("vin")
     return any(capability_profile.window_open_states(
@@ -6309,6 +6353,10 @@ def _cmd_error_html(msg: str) -> str:
 def _command_confirmed(expected: dict, signals: dict) -> bool:
     """True when the live signals match every expected field (empty expected → True). A flag matches
     as on/off; a level (the sunshade's percent) only once it reaches the value asked for."""
+    if hasattr(signals, "snapshot"):
+        snapshot = signals.snapshot
+        values = snapshot.status()
+        return bool(expected) and all(field in snapshot.reported_fields and values.get(field) == want for field, want in expected.items())
     for field, want in expected.items():
         checker = _FIELD_CHECK.get(field)
         if checker is None:
@@ -6565,6 +6613,9 @@ async def setup_page(request: Request):
     # The battery list is rendered from the server's map (already filtered for this build), so the
     # official wizard's HTML never even contains the REEV packs — and the page can't drift from what
     # detect-vehicle answers, since both read battery_options_for_build().
+    from api_backend import is_china
+    if is_china():
+        return templates.TemplateResponse(request, "setup_cn.html", {"error": ""})
     return templates.TemplateResponse(request, "setup.html", {
         "battery_options": battery_options_for_build(),
         "research": research.research_enabled(),
@@ -6629,11 +6680,89 @@ async def setup_application_bundle(request: Request):
     return JSONResponse({"ok": True, "state": result["state"]})
 
 
+@app.post("/api/setup/sms/send")
+async def cn_sms_send(request: Request):
+    import asyncio
+    from cn_backend import ChinaAPIClient, ChinaError
+    body = await request.json()
+    try:
+        api = ChinaAPIClient(device_id=db_reader.get_or_create_device_id())
+        await asyncio.to_thread(api.send_sms, body.get("phone", ""))
+        return JSONResponse({"ok": True, "retry_in": 60})
+    except ChinaError as error:
+        return JSONResponse({"error": str(error), "code": error.code}, status_code=400)
+
+
+@app.post("/api/setup/sms/verify")
+async def cn_sms_verify(request: Request):
+    import asyncio
+    from cn_backend import ChinaAPIClient, ChinaError
+    body = await request.json()
+    try:
+        api = ChinaAPIClient(device_id=db_reader.get_or_create_device_id())
+        login_id, cars = await asyncio.to_thread(api.verify_sms, body.get("phone", ""), body.get("sms_code", ""))
+        return JSONResponse({"login_id": login_id, "vehicles": [{"vin": car.vin, "car_type": car.car_type,
+            "year": car.year, "is_shared": car.is_shared} for car in cars]})
+    except ChinaError as error:
+        return JSONResponse({"error": str(error), "code": error.code}, status_code=400)
+
+
+async def cn_setup_submit(request: Request):
+    import asyncio
+    from cn_backend import ChinaAPIClient, ChinaError, get_setting
+    import crypto
+    form = await request.form()
+    login_id = str(form.get("login_id", ""))
+    try:
+        staged = json.loads(crypto.decrypt(get_setting("cn_pending_" + login_id)))
+        cars = json.loads(form.get("vehicles_json") or "[]")
+        expected = {car["vin"].lower(): car for car in staged.get("vehicles", [])}
+        if not cars or len(cars) != len(expected) or {car["vin"].lower() for car in cars} != set(expected):
+            raise ValueError("車輛清單與登入流程不一致")
+        for car in cars:
+            capacity = float(car.get("battery", 0))
+            if not math.isfinite(capacity) or not 1 <= capacity <= 250: raise ValueError("請確認每台車的電池可用容量")
+            pin = str(car.get("pin") or "")
+            if pin and not re.fullmatch(r"[0-9]{4,8}", pin): raise ValueError("操作 PIN 必須為 4 至 8 位數字")
+            car["car_type"] = expected[car["vin"].lower()]["car_type"]
+        await asyncio.to_thread(ChinaAPIClient.complete_setup, login_id)
+        apply_setup_vehicles(cars)
+        db_reader.set_setting("battery_capacity_kwh", str(float(cars[0]["battery"])))
+        db_reader.set_setting("is_reev", "1" if cars[0].get("is_reev") else "0")
+        db_reader.set_setting("language", "zh-TW")
+        db_reader.set_currency("CNY")
+        db_reader.set_timezone(str(form.get("timezone") or "Asia/Shanghai"))
+        db_reader.set_setting(db_reader.TZ_PINNED_KEY, "1")
+        db_reader.set_setting("factory_reset_pending", "0")
+        db_reader.set_setting("setup_complete", "1")
+        command_client._session._reset()
+        return RedirectResponse(request.headers.get("x-ingress-path", "") + "/", status_code=303)
+    except (ChinaError, ValueError, KeyError, TypeError) as error:
+        return templates.TemplateResponse(request, "setup_cn.html", {"error": str(error) if isinstance(error, ChinaError) else "車輛設定或登入流程無效，請重新確認"}, status_code=400)
+
+
+@app.get("/api/cn/energy/daily")
+async def cn_daily_energy(start: str = "", end: str = ""):
+    import asyncio
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from cn_backend import ChinaError
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    try:
+        rows = await asyncio.to_thread(command_client.get_daily_energy, start or (today - timedelta(days=6)).isoformat(), end or today.isoformat())
+        return JSONResponse({"days": rows, "source": "official_daily_driving"})
+    except (ChinaError, ValueError) as error:
+        return JSONResponse({"error": str(error) if isinstance(error, ChinaError) else "日期格式無效"}, status_code=400)
+
+
 @app.get("/api/setup/cert-status")
 async def cert_status_api():
     """Whether the application material is in place, so the wizard can go to the account step.
 
     It is installed at startup from the build itself; the user is never asked for a certificate."""
+    from api_backend import is_china
+    if is_china():
+        return JSONResponse({"state": "ready", "market": "CN", "manual_upload_required": False})
     from setup_readiness import readiness
     from runtime_paths import paths
     return JSONResponse(readiness(command_client.cert_dir(), parameters_directory=paths().data / 'api-v2-private'))
@@ -6692,10 +6821,10 @@ def apply_setup_vehicles(cars: list[dict]) -> int:
         if kwh > 0:
             db_reader.set_vehicle_capacity(vin, kwh)
         pin = (car.get("pin") or "").strip()
-        if pin:
+        if pin or __import__("api_backend").is_china():
             db_reader.set_secret(f"leapmotor_pin_{key}", pin)
         db_reader.set_setting(f"is_reev_{key}",
-                              "1" if str(car.get("is_reev")) in ("1", "on", "true") else "0")
+                              "1" if str(car.get("is_reev")).lower() in ("1", "on", "true") else "0")
         db_reader.set_setting(f"vehicle_setup_done_{key}", "1")
         done += 1
     return done
@@ -6703,6 +6832,9 @@ def apply_setup_vehicles(cars: list[dict]) -> int:
 
 @app.post("/setup", response_class=HTMLResponse)
 async def setup_submit(request: Request):
+    from api_backend import is_china
+    if is_china():
+        return await cn_setup_submit(request)
     form = await request.form()
     user     = (form.get("user", "") or "").strip()
     pwd      = (form.get("password", "") or "").strip()
@@ -6741,7 +6873,7 @@ async def setup_submit(request: Request):
     db_reader.set_secret("leapmotor_pin", pin)
     db_reader.set_setting("battery_capacity_kwh", str(battery_kwh))
     db_reader.set_setting("is_reev", is_reev)   # REEV variant selected in the wizard → gates fuel features
-    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es") else "en")
+    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW") else "en")
     # set_timezone validates against the tz database and falls back to Auto on anything unknown, so
     # a tampered field cannot wedge every date render. Marked as pinned either way, so the startup
     # migration never comes back and overwrites a fresh answer with the container's clock.

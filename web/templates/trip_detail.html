@@ -480,12 +480,14 @@
     <script>
       const coords = {{ trip.positions | tojson }};
       const latlngs = coords.map(p => [p.latitude, p.longitude]);
-      const map = L.map('map').fitBounds(L.latLngBounds(latlngs).pad(0.15));
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      const map = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('map').fitBounds(L.latLngBounds(latlngs).pad(0.15));
+      {% if china_market is defined and china_market() %}MateMap.addTiles(map);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
         // OSM blocks tiles with no Referer; send the page origin so they load in privacy-strict Firefox.
         referrerPolicy: 'origin'
       }).addTo(map);
+{% endif %}
 
       // Route: single red with white outline for visibility. A gap-bridge run (real signal
       // loss — see db_reader._split_track_gaps) gets its own white casing too, then a bold

@@ -103,6 +103,10 @@ def account_username(get_setting):
 
 
 def command_allowed(vin, command, get_setting):
+    from api_backend import is_china
+    if is_china():
+        from cn_capabilities import stored_permission
+        return stored_permission(vin, command, get_setting)
     try:
         username = account_username(get_setting)
         snapshot = json.loads(get_setting(snapshot_key(vin), '{}'))

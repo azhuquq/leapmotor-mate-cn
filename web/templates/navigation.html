@@ -3,6 +3,7 @@
 {% block title %}{{ t('nav_navigation') }} — LeapMotor Mate{% endblock %}
 
 {% block content %}
+{% if china_market is defined and china_market() %}<div class="rounded-xl bg-slate-900 border border-slate-700 p-6 text-slate-300">此功能尚未有完整中國區協定，暫未開放。即時空調及座椅控制可在「控制」頁使用。</div>{% else %}
 <div class="mb-6">
   <h1 class="text-2xl font-bold text-white">{{ t('nav_title') }}</h1>
   <p class="text-slate-400 text-sm mt-1">{{ t('nav_subtitle') }}</p>
@@ -111,10 +112,12 @@
 <script>
   const navStart = [{{ status.latitude if status and status.latitude else 45.4642 }},
                     {{ status.longitude if status and status.longitude else 9.19 }}];
-  const navMap = L.map('navmap').setView(navStart, 14);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  const navMap = {% if china_market is defined and china_market() %}MateMap.create{% else %}L.map{% endif %}('navmap').setView(navStart, 14);
+  {% if china_market is defined and china_market() %}MateMap.addTiles(navMap);{% else %}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
               // OSM blocks tiles with no Referer; send the page origin so they load in privacy-strict Firefox.
               { attribution: '© OpenStreetMap', referrerPolicy: 'origin' }).addTo(navMap);
+{% endif %}
 
   {% if status and status.latitude and status.longitude %}
   L.marker(navStart).addTo(navMap).bindPopup('🚗');
@@ -308,4 +311,5 @@
     }
   }
 </script>
+{% endif %}
 {% endblock %}

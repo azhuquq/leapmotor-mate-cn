@@ -1,5 +1,7 @@
 # China cloud API research (September 2026)
 
+> 歷史調研：本分支現已實作中國區轉接器，現況及使用方法見 [中國區版本](CHINA-MARKET.md)。以下保留當時的 B05 調研紀錄。
+
 LeapMotor Mate currently supports the international cloud only, as discussed in
 [#285](https://github.com/ProtossBlaster/leapmotor-mate/issues/285). A Chinese
 market account and a shared B05 (model year 2026) have since been used to verify
