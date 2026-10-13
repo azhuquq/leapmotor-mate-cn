@@ -9,6 +9,7 @@ import dataclasses
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import re
@@ -32,6 +33,11 @@ from leapmotor_cloud.mate_compat import Vehicle, MateAPIError
 from cn_capabilities import permission
 
 SESSION_KEY = 'cn_shared_session'
+ACCOUNT_RENEW_SKEW_SECONDS = 1800
+ACCOUNT_RETRY_MIN_SECONDS = 300
+ACCOUNT_RETRY_MAX_SECONDS = 3600
+ACCOUNT_SUCCESS_THROTTLE_SECONDS = 900
+log = logging.getLogger(__name__)
 GLOBAL = 'https://app-gw-global-master.leapmotor.com'
 CONTROL = '/app/app-control-service/v3/api/appremotectl'
 # Signature refusals (39/302002002/302010205) do not invalidate a session.
@@ -170,6 +176,7 @@ class ChinaAPIClient:
         self._routes, self._vehicles, self._configs = {}, {}, {}
         self._vehicles_read_at = 0
         self._generation = None
+        self._account_refresh = {}
         self.on_login = None
         self.last_new_command_receipt = None
 
@@ -181,7 +188,8 @@ class ChinaAPIClient:
 
     def _envelope(self):
         return {'market': 'CN', 'profile': PROFILE, 'revision': secrets.token_hex(16),
-                'session': {key: getattr(self._p.session, key) for key in SESSION_FIELDS}}
+                'session': {key: getattr(self._p.session, key) for key in SESSION_FIELDS},
+                'account_refresh': dict(self._account_refresh)}
 
     def _restore(self):
         value = get_setting(SESSION_KEY)
@@ -194,6 +202,8 @@ class ChinaAPIClient:
         if blob.get('revision') != self._generation:
             self._p.session = p.Session(**{k: v for k, v in blob['session'].items() if k in SESSION_FIELDS}, operate_pwd_mode='aes_jwt')
             self._p.session.seal_key()
+            state = blob.get('account_refresh')
+            self._account_refresh = dict(state) if isinstance(state, dict) else {}
             self._generation = blob['revision']
             self.device_id = self._p.session.device_id
         return True
@@ -217,7 +227,53 @@ class ChinaAPIClient:
         except (ValueError, KeyError, IndexError, TypeError): raise ChinaAuthRequired('車端登入資料格式無效') from None
 
     def _ensure_fresh(self):
+        self._refresh_account_if_needed()
         if time.time() + 120 >= self._expiry(): self._renew()
+
+    def _refresh_account_if_needed(self, *, force=False):
+        """Called under the shared session lock; optional failures keep the gateway usable.
+
+        Persist a retry lease before sending, so another process (or a restart)
+        cannot repeat a failed refresh. Unknown expiry gets one bounded attempt.
+        """
+        session = self._p.session
+        if not (session.refresh_token and session.phone and session.user_id):
+            return False
+        now = time.time()
+        if not force and session.account_token_expires_at > now + ACCOUNT_RENEW_SKEW_SECONDS:
+            return False
+        if now < self._account_refresh.get('retry_at', 0):
+            return False
+        if float(get_setting('cn_login_cooldown', '0')) > now:
+            raise ChinaError('帳號風控冷卻中，請稍後重試', 1023)
+        before = copy.deepcopy(session)
+        failures = min(int(self._account_refresh.get('failures', 0)), 8)
+        self._account_refresh.update(last_attempt_at=now, retry_at=now + ACCOUNT_RETRY_MIN_SECONDS)
+        self._save()
+        try:
+            response = check(self._p.refresh_account_token(), legacy=True)
+            data = response.get('data') or {}
+            ttl = float(data.get('tokenExpired') or 0)
+            if (not isinstance(data.get('token'), str) or not data['token']
+                or not math.isfinite(ttl) or ttl <= 0
+                or self._p.session.token != data['token']
+                or self._p.session.account_token_expires_at <= time.time()):
+                raise ChinaError('帳號續期回應不完整，已保留原登入資料')
+        except Exception as error:
+            self._p.session = before
+            delay = min(ACCOUNT_RETRY_MIN_SECONDS * 2 ** failures, ACCOUNT_RETRY_MAX_SECONDS)
+            self._account_refresh.update(failures=failures + 1, retry_at=time.time() + delay)
+            self._save()
+            log.warning('中國區帳號 Token 續期未成功（%s, code=%s），保留登入，%s 秒後再試',
+                        type(error).__name__, getattr(error, 'code', None), delay)
+            if getattr(error, 'code', None) == 1023:
+                raise
+            return False
+        self._account_refresh.update(failures=0, last_success_at=time.time(),
+                                     retry_at=time.time() + ACCOUNT_SUCCESS_THROTTLE_SECONDS)
+        self._save()
+        log.info('中國區帳號 Token 已免短信續期')
+        return True
 
     def _renew(self):
         before = copy.deepcopy(self._p.session)
@@ -228,12 +284,18 @@ class ChinaAPIClient:
                 self._apply_gateway(response)
             except ChinaAuthRequired:
                 if not before.refresh_token: raise ChinaAuthRequired('請重新以短信驗證碼登入')
-                self._p.refresh_account_token()
+                self._p.session = copy.deepcopy(before)
+                self._refresh_account_if_needed(force=True)
                 response = self._p.car_login(tries=1)
                 self._apply_gateway(response)
             self._save()
+            log.info('中國區車端 Token 已續期')
         except Exception:
             self._p.session = before
+            # An account refresh may already have succeeded and been persisted.
+            # Restore it instead of reverting that success with a failed exchange.
+            self._generation = None
+            self._restore()
             raise
 
     def _apply_gateway(self, response):
@@ -250,6 +312,7 @@ class ChinaAPIClient:
     def token_refresh(self):
         with self._mutex, self._locked():
             if not self._restore(): raise ChinaAuthRequired('請重新以短信驗證碼登入')
+            self._refresh_account_if_needed()
             self._renew()
 
     def send_sms(self, phone):
@@ -269,6 +332,8 @@ class ChinaAPIClient:
         with self._mutex, self._locked():
             if float(get_setting('cn_login_cooldown', '0')) > time.time(): raise ChinaError('帳號風控冷卻中，請稍後重試', 1023)
             self._p.session = p.Session(device_id=self.device_id, operate_pwd_mode='aes_jwt')
+            self._account_refresh = {}
+            self._generation = None
             try:
                 self._p.login(phone, str(code))
                 if not self._p.session.token or not self._p.session.user_id:

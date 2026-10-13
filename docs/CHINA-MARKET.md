@@ -66,7 +66,9 @@ docker compose up -d --build
 
 `./data` 保存 SQLite 資料庫、加密用的 `secret.key` 與登入資料。帳號／gateway token、簽名材料及裝置 ID 存在加密 blob，短信驗證碼不保存；每車 PIN 使用既有的加密設定機制。備份時請保留**整個 data 目錄**，只備份資料庫可能無法還原登入與 PIN。
 
-網路失敗保留既有登入，不觸發短信登入。只有認證拒絕才嘗試續期；需要人工短信時明確提示。錯誤 1023 會啟動持久化十分鐘冷卻，冷卻內不發出新請求。發送短信另有六十秒伺服器限制。
+帳號 Token 在到期前三十分鐘主動免短信續期；到期時間未知時也會嘗試續期。車端 Token 在到期前兩分鐘使用車端 refreshToken 續期；若遭認證拒絕，再用帳號續期及交換流程恢復。帳號續期暫時失敗仍可使用有效的車端 Token，沒有短信自動重登。
+
+帳號續期失敗後從五分鐘起指數退避，最長一小時；成功後至少十五分鐘不重複續期。退避狀態與 Token 一起加密保存並由 Web／Poller 共用，重新啟動不會清掉節流。車端刷新失敗仍保留已成功更新的帳號 Token。錯誤 1023 會啟動持久化十分鐘全域冷卻，冷卻內不發出新請求；短信另有六十秒伺服器限制。兩層登入資料無法自動恢復時需手動短信登入，控車請求不會自動重送。
 
 登出刪除中國區登入、未完成登入與帳號權限快取，保留按 VIN 儲存的本地歷史。此服務含車輛控制能力，請在「設定」啟用存取密碼，並放在你信任的網路。
 
@@ -79,11 +81,11 @@ python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r poller/requirements.txt -r web/requirements.txt pytest pytest-xdist httpx playwright
 python -m playwright install chromium
-python -m pytest -q tests/test_cn_adapter.py
+python -m pytest -q tests/test_cn_adapter.py tests/test_cn_token_refresh.py tests/test_cn_car_picture.py tests/test_cn_maps.py
 python -m pytest -q -n 4 --dist worksteal
 ```
 
-核心覆蓋：短信設定與重啟、跨客戶端單次續期、實送標頭 HMAC、路由限制、PIN 先行、B01 標量回執、共享權限與帳號隔離、充電狀態、未知值、車窗／後排座椅衝突、位置權限、每日快取及 web／poller 相同入庫值。手機版另以合成 B01 帳號驗證登入與設定流程。
+核心覆蓋：短信設定與重啟、跨程序單次續期、帳號主動續期與持久退避、續期失敗時保留有效車端登入、實送標頭 HMAC、路由限制、PIN 先行、B01 標量回執、共享權限與帳號隔離、充電狀態、未知值、車窗／後排座椅衝突、位置權限、每日快取及 web／poller 相同入庫值。手機版另以合成 B01 帳號驗證登入與設定流程。
 
 ## 協定來源與授權
 

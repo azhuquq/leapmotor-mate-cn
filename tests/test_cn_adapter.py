@@ -50,6 +50,9 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setenv('MATE_MARKET', 'CN')
     monkeypatch.setenv('DB_PATH', str(tmp_path / 'mate.db'))
     monkeypatch.setenv('MATE_SECRET_KEY', 'synthetic-test-only')
+    import crypto
+    # The suite changes keys between fixtures; each process must use this fixture's key.
+    monkeypatch.setattr(crypto, '_fernet', None)
     calls = []
     def transport(method, url, headers, body=None, form=False):
         calls.append((method, url, dict(headers), copy.deepcopy(body)))
@@ -62,7 +65,8 @@ def api(tmp_path, monkeypatch):
         raise AssertionError('unexpected synthetic request path')
     client = ChinaAPIClient(username='13800000000', operation_password='1234', device_id='synthetic-device', transport=transport)
     client._p.session = Session(phone='13800000000', user_id='synthetic-account', device_id='synthetic-device',
-        token='synthetic-legacy', refresh_token='synthetic-legacy-refresh', operate_pwd_mode='aes_jwt')
+        token='synthetic-legacy', refresh_token='synthetic-legacy-refresh', operate_pwd_mode='aes_jwt',
+        account_token_expires_at=int(time.time()) + 21600)
     client._apply_gateway(gateway())
     client._save()
     car = vehicle()
