@@ -1,8 +1,15 @@
 # LeapMotor Mate — Manual de usuario
 
-> **Versión de Mate:** v4.15.3 · **Idioma:** Español
+> **Versión de Mate:** v4.15.4 · **Idioma:** Español
 
-## Novedades de la versión 4.15.3
+## Novedades de la versión 4.15.4
+
+**La temperatura exterior sin GPS.** Cuando la nube no envía la posición GPS de un coche parado,
+Mate consulta la temperatura exterior en la última posición conocida del coche, siempre que el
+cuentakilómetros no haya cambiado desde entonces. Hasta ahora el valor se quedaba fijo, y tras
+reiniciar Mate faltaba.
+
+### Novedades de la versión 4.15.3
 
 **La línea de la wallbox se queda con la carga.** Con la wallbox activada y Home Assistant
 configurado, Mate guarda ahora las lecturas de la wallbox de cada carga en casa, así que la línea verde
@@ -1063,7 +1070,9 @@ mucho una vez cada 20 minutos o cada 10 km, lo que llegue antes — y muestra el
 habitáculo. Está **desactivado por defecto**, porque la consulta envía la posición del coche a
 Open-Meteo: el único interruptor está en *Ajustes → valores por defecto de los trayectos*. El mismo
 dato se convierte en una entidad **Temperatura exterior** en Home Assistant y da a cada trayecto
-lecturas en ruta, de las que salen su temperatura más alta y más baja.
+lecturas en ruta, de las que salen su temperatura más alta y más baja. Si la nube no envía la
+posición GPS, Mate usa la última que tenía, pero solo mientras el cuentakilómetros no haya cambiado;
+un coche conducido sin GPS conserva el último valor.
 
 #### Las tres temperaturas: habitáculo, consigna del A/A y batería
 No todos los Leapmotor envían las tres. Mate distingue **tres situaciones diferentes**, porque

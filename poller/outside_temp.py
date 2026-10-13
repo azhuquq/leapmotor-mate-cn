@@ -11,6 +11,10 @@ _MAX_MOVE_KM, and a failed one is not asked again before _RETRY_S. A day of driv
 dozen calls, nowhere near the cap; a parked car makes none. The live samples are stored on each
 position, so they also become the trip's temperature (averaged along the real route) —
 elevation_enrich.fetch_trip_temperature stays as the fallback for trips with no live sample.
+
+A frame with no GPS fix is asked about where the car LAST had one, but only while the odometer says
+it is still there — on 13/10/2026 the cloud sent a parked B10's GPS as zero for hours, and after a
+restart the Overview lost the row. The last fix starts from the database (`Database.last_fix`).
 """
 import json
 import logging
@@ -61,15 +65,19 @@ class OutsideTempSampler:
     touching the network only when `_should_refetch` says so; otherwise the cached value. Injectable
     `fetch` for tests."""
 
-    def __init__(self, fetch: Callable[[float, float], Optional[float]] = fetch_current_temp):
+    def __init__(self, fetch: Callable[[float, float], Optional[float]] = fetch_current_temp,
+                 last_fix: Optional[tuple] = None):
         self._fetch = fetch
+        # (lat, lon, odometer_km) of the newest real fix — from the database at startup, then from
+        # each frame that has one. Odometer None = unknown, so it can't vouch the car is still there.
+        self._fix: Optional[tuple] = last_fix
         self._temp: Optional[float] = None
         self._ts: Optional[float] = None
         self._lat: Optional[float] = None
         self._lon: Optional[float] = None
         self._failed_ts: Optional[float] = None
 
-    def sample(self, lat, lon, now_ts) -> Optional[float]:
+    def sample(self, lat, lon, now_ts, odometer_km=None) -> Optional[float]:
         # `None` never arrives: `client._resolve_coord` returns 0.0 when no usable value exists, so
         # this guard tested for something the parser cannot produce and a frame without a fix asked
         # for the weather at 0,0 — Null Island, in the Gulf of Guinea — stored it as the car's
@@ -77,8 +85,15 @@ class OutsideTempSampler:
         # until the car had "moved" 10 km back. Exactly 0,0 is no fix: the same convention the rest
         # of the poller already uses (`if data.latitude and data.longitude` for geohashes,
         # `latitude != 0 AND longitude != 0` in the trip query).
-        if not lat or not lon:
-            return self._temp   # no fix → keep the last reading, don't guess a new place
+        if lat and lon:
+            self._fix = (lat, lon, odometer_km)
+        else:
+            # No fix: the car is where the last one was taken only if it hasn't driven since — the
+            # same odometer, both known. Otherwise keep the last reading and don't guess a place.
+            fix = self._fix
+            if fix is None or odometer_km is None or fix[2] is None or fix[2] != odometer_km:
+                return self._temp
+            lat, lon = fix[0], fix[1]
         # Moving does not end the wait (a refusal is not the car's); a clock set back does.
         if self._failed_ts is not None and 0 <= now_ts - self._failed_ts < _RETRY_S:
             return self._temp

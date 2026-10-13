@@ -813,7 +813,8 @@ class VehicleContext:
         self.empty_status_count = 0   # consecutive "no live signals" responses (car asleep)
         self.poll_error_count = 0     # consecutive hard API errors (cloud unreachable)
         self.research_last_sig: dict = {}   # beta build: last value per signal id, for delta logging
-        self.outside_sampler = OutsideTempSampler()   # live outside temp (Open-Meteo), cached per car
+        # live outside temp (Open-Meteo), cached per car; starts from the last real fix on disk
+        self.outside_sampler = OutsideTempSampler(last_fix=db.last_fix(vehicle_id))
         self.abrp_last_sent = abrp.NOTHING_SENT   # (token, frame ts) last taken by ABRP; a repeat is not a point
         self.interval = 30.0
         self.next_due = 0.0           # monotonic; 0 = due now, so the first round polls every car
@@ -1019,7 +1020,9 @@ def _poll_vehicle(db, client, ctx, acct) -> None:
         # runs, so it lands on the position row (positions.outside_temp) and flows on to MQTT, ABRP
         # and — averaged along the route — the trip's temperature.
         if db.get_setting("outside_temp_enabled", "0") == "1":
-            data.outside_temp = ctx.outside_sampler.sample(data.latitude, data.longitude, time.time())
+            data.outside_temp = ctx.outside_sampler.sample(
+                data.latitude, data.longitude, time.time(),
+                data.odometer_km if data.odometer_reported else None)
         ctx.recorder.process(data)
         stored = True
         # the answer counts once the frame is on record: a frame the recorder could not store is

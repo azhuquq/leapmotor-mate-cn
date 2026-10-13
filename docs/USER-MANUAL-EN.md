@@ -1,8 +1,14 @@
 # LeapMotor Mate — User Manual
 
-> **Mate version:** v4.15.3 · **Language:** English
+> **Mate version:** v4.15.4 · **Language:** English
 
-## New in 4.15.3
+## New in 4.15.4
+
+**The outside temperature without GPS.** When the cloud sends no GPS position for a parked car, Mate
+looks the outside temperature up at the car's last known position, as long as the odometer has not
+changed since. Until now the reading stayed as it was, and after a restart of Mate it was missing.
+
+### New in 4.15.3
 
 **The wallbox's line stays with the charge.** With the wallbox enabled and Home Assistant configured,
 Mate now keeps the wallbox's readings of every home charge, so the green *Wallbox (AC)* line of its
@@ -1009,7 +1015,9 @@ Mate looks its position up against [Open-Meteo](https://open-meteo.com) — at m
 minutes or 10 km, whichever comes first — and shows the reading next to the cabin one. It is **off by
 default**, because the lookup sends the car's position to Open-Meteo: the single opt-in is in
 *Settings → trip defaults*. The same reading becomes an **Outside Temp** entity in Home Assistant and
-gives each trip readings along the way, for its highest and lowest temperature.
+gives each trip readings along the way, for its highest and lowest temperature. If the cloud sends
+no GPS position, Mate uses the last one it had, but only while the odometer has not changed since; a
+car driven without GPS keeps its last reading.
 
 #### The three temperatures: cabin, A/C target, battery
 Not every Leapmotor sends all three. Mate tells **three different situations** apart, because

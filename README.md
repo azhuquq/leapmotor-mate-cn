@@ -29,8 +29,8 @@ docker compose up -d --build
 
 # LeapMotor Mate
 
-**v4.15.3:** the wallbox's line on a charge's chart is **drawn from readings Mate keeps**, so it stays after Home Assistant purges its history, and the chart opens faster ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm). On a phone the times under a chart no longer run into each other. In **4.15.2**: a charge's chart comes as its row opens ([#417](https://github.com/ProtossBlaster/leapmotor-mate/pull/417), @arekm).
-See [release notes and upgrade impact](docs/releases/v4.15.3.md).
+**v4.15.4:** with the outside temperature switched on, a parked car whose GPS the cloud sends as zero **keeps its outside temperature**: Mate asks about its last known position while the odometer has not changed. In **4.15.3**: the wallbox's line on a charge's chart is drawn from readings Mate keeps ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm).
+See [release notes and upgrade impact](docs/releases/v4.15.4.md).
 
 [![CI](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml)
 [![Docker](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml)
@@ -389,8 +389,8 @@ Works with any MQTT broker (e.g. the Mosquitto add‑on). Use **Test connection*
 
 # LeapMotor Mate · Italiano
 
-**v4.15.3:** la linea della wallbox nel grafico di una ricarica è **tracciata dalle letture che Mate conserva**, quindi resta anche dopo che Home Assistant ha cancellato il suo storico, e il grafico si apre più in fretta ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm). Sul telefono le ore sotto un grafico non si sovrappongono più. Nella **4.15.2**: il grafico di una ricarica arriva quando si apre la riga ([#417](https://github.com/ProtossBlaster/leapmotor-mate/pull/417), @arekm).
-Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v4.15.3.md#italiano).
+**v4.15.4:** con la temperatura esterna attiva, un'auto ferma di cui il cloud manda il GPS a zero **mantiene la temperatura esterna**: Mate chiede il meteo nella sua ultima posizione nota finché il contachilometri non cambia. Nella **4.15.3**: la linea della wallbox nel grafico di una ricarica è tracciata dalle letture che Mate conserva ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm).
+Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v4.15.4.md#italiano).
 
 **Tracciamento viaggi, registro ricariche e controllo remoto per veicoli Leapmotor** — un companion self‑hosted (un *TeslaMate* per Leapmotor). Funziona come **add‑on di Home Assistant** o come **container Docker standalone**.
 

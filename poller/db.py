@@ -1688,6 +1688,18 @@ class Database:
                 signs[axis] = 1.0
         return signs
 
+    def last_fix(self, vehicle_id: int) -> Optional[tuple]:
+        """(latitude, longitude, odometer_km) of this car's newest position with a real GPS fix, or
+        None if it never had one. The outside-temperature sampler starts from it after a restart, so
+        a parked car whose GPS the cloud sends as zero is still asked about where it stands. 0,0 is
+        the no-fix marker, as in `dominant_coord_signs` above."""
+        row = self._conn.execute(
+            "SELECT latitude, longitude, odometer_km FROM positions"
+            " WHERE vehicle_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL"
+            "   AND latitude != 0 AND longitude != 0"
+            " ORDER BY id DESC LIMIT 1", (vehicle_id,)).fetchone()
+        return (row["latitude"], row["longitude"], row["odometer_km"]) if row else None
+
     # ── Trip ─────────────────────────────────────────────────────────────────
 
     def _default_trip_tags(self) -> tuple:
