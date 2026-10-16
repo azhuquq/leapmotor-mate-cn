@@ -448,15 +448,16 @@
     </div>
   </div>
 
+  {# Keep these controls inside #cmd-grid so its outerHTML refresh replaces them too. #}
+  {% if china_market() and healthy_charging_shown %}
+  <div class="card">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">健康充電</h3>
+    <div class="grid grid-cols-2 gap-3">
+      {{ action_tile('healthy_charging_on', '<span aria-hidden="true">⚡</span>', '開啟健康充電', '開啟') }}
+      {{ action_tile('healthy_charging_off', '<span aria-hidden="true">⚡</span>', '關閉健康充電', '關閉') }}
+    </div>
+  </div>
+  {% endif %}
+
   </div>{# /RIGHT column #}
 </div>
-
-{% if china_market() and healthy_charging_shown %}
-<div class="mt-5">
-  <h3 class="text-sm font-medium text-slate-300 mb-3">健康充電</h3>
-  <div class="grid grid-cols-2 gap-3">
-    {{ action_tile('healthy_charging_on', '<span aria-hidden="true">⚡</span>', '開啟健康充電', '開啟') }}
-    {{ action_tile('healthy_charging_off', '<span aria-hidden="true">⚡</span>', '關閉健康充電', '關閉') }}
-  </div>
-</div>
-{% endif %}
