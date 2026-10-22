@@ -63,11 +63,28 @@ def extract_status_signals(payload, vehicle):
 
 def _t03_signals(raw):
     named = any(name in raw for names in _T03_NAMED_SIGNALS.values() for name in names)
-    # Named maps can contain numbered placeholders, e.g. 2188=0 beside expectedMileage=160.
-    # Keep the original map for diagnostics, but never let placeholders override named readings.
-    signals = {} if named else dict(raw)
+    # SoC identifies the primary schema, even when its value is invalid. A numbered frame
+    # may also carry named auxiliary readings; those must not erase its numeric SoC/GPS.
+    # Conversely, a named-SoC frame can contain numbered placeholders, which stay untrusted.
+    numbered = 'soc' not in raw
+    signals = dict(raw) if numbered else {}
+    # Range and GPS have multiple numeric fallbacks. An explicit named reading owns the
+    # entire field, so an older/placeholder fallback cannot override it (or fill an invalid one).
+    for aliases, ids in ((('expectedMileage', 'liveRemainingRange'), ('2188', '3257', '3260')),
+                         (('latitude',), ('3', '3725', '2190')),
+                         (('longitude',), ('2', '3724', '2191'))):
+        if any(key in raw for key in aliases):
+            for sid in ids: signals.pop(sid, None)
     for sid, aliases in _T03_NAMED_SIGNALS.items():
-        for key in aliases if named else (sid,):
+        has_alias = any(key in raw for key in aliases)
+        if has_alias:
+            keys = aliases
+        elif numbered and sid in signals:
+            keys = (sid,)
+        else:
+            keys = ()
+        signals.pop(sid, None)
+        for key in keys:
             value = raw.get(key)
             if sid in _T03_BOOLEAN_SIGNALS:
                 if isinstance(value, bool): value = int(value)

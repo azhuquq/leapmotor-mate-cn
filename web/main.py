@@ -5946,14 +5946,26 @@ _car_pic_retry_after = 0.0
 
 def _download_car_picture_package(pkg_path: str) -> bytes | None:
     """The package fresh from the cloud, written over the copy on disk; None when the cloud gave none."""
+    import tempfile
     pkg = command_client.get_car_picture_package()
     if pkg:
+        staged = None
         try:
-            with open(pkg_path + ".tmp", "wb") as f:
+            # A background refresh can overlap a manual refresh. Each writer owns its
+            # staging file until replacement; sharing .tmp lets one mutate the other's ZIP.
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(pkg_path) or '.',
+                    prefix=os.path.basename(pkg_path) + '.', suffix='.tmp', delete=False) as f:
+                staged = f.name
                 f.write(pkg)
-            os.replace(pkg_path + ".tmp", pkg_path)     # a request reading it meanwhile gets a whole file
+            os.replace(staged, pkg_path)     # a request reading it meanwhile gets a whole file
         except OSError:
             pass
+        finally:
+            if staged is not None:
+                try:
+                    os.unlink(staged)
+                except OSError:
+                    pass
         _car_image_memo.clear()
         car_image.clear_cache()
     return pkg

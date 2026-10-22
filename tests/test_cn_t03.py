@@ -79,6 +79,45 @@ def test_numbered_t03_still_reads_precise_soc_boolean_flags_and_gps_fallbacks():
     assert status['frame_ts'] == 1_800_000_000_000 and status['latitude'] is not None
 
 
+def test_named_auxiliary_readings_do_not_erase_a_numbered_t03_frame():
+    payload = {'code': 0, 'data': {'signalMap': {'100003': 62.5, '1204': 62, '1318': 2314,
+        '1010': 3, '1319': 30, '1149': 1, '3724': 120.1, '3725': 30.1,
+        '1349': 15, 'indoorTemp': 25, '1298': 0, 'driverDoorLockStatus': True,
+        'sts': 1_800_000_000}}}
+    before = copy.deepcopy(payload)
+    snapshot = decode_status(payload, t03())
+    status = snapshot.status()
+    assert (status['soc'], status['odometer_km'], status['inside_temp']) == (62.5, 2314, 25)
+    assert status['is_locked'] is True and status['vehicle_state'] == 'driving'
+    assert status['charging'] == 0 and status['latitude'] is not None
+    assert status['frame_ts'] == 1_800_000_000_000
+    assert snapshot.raw_signals == payload['data']['signalMap'] and payload == before
+
+
+def test_named_range_owns_all_numeric_range_fallbacks_in_a_mixed_frame():
+    payload = {'code': 0, 'data': {'signalMap': {'1204': 62, 'expectedMileage': 160,
+        '2188': 0, '3257': 0, '3260': 0}}}
+    assert decode_status(payload, t03()).status()['range_km'] == 160
+
+
+@pytest.mark.parametrize('bad', [None, False, 'nan', 'bad'])
+def test_invalid_named_auxiliary_reading_does_not_revive_a_numeric_placeholder(bad):
+    payload = {'code': 0, 'data': {'signalMap': {'1204': 62, 'indoorTemp': bad, '1349': 0,
+        'expectedMileage': bad, '2188': 0, '3257': 0, 'latitude': bad, 'longitude': bad,
+        '3724': 120.1, '3725': 30.1}}}
+    status = decode_status(payload, t03()).status()
+    assert status['soc'] == 62
+    assert status['inside_temp'] is None and status['range_km'] is None
+    assert status['latitude'] is None and status['longitude'] is None
+
+
+@pytest.mark.parametrize('bad_soc', [None, False, 'nan', -1, 101])
+def test_invalid_named_soc_never_falls_back_to_a_numbered_placeholder(bad_soc):
+    payload = named(soc=bad_soc, **{'100003': 0, '1204': 0})
+    with pytest.raises(ChinaError, match='沒有有效電量'):
+        decode_status(payload, t03())
+
+
 def test_server_collection_time_does_not_advance_a_named_vehicle_frame():
     payload = named()
     first = decode_status(payload, t03())
@@ -167,12 +206,17 @@ def wire_t03(api, monkeypatch, payload):
     return car, session
 
 
-def test_poller_and_web_store_the_same_t03_reading(api, monkeypatch):
+@pytest.mark.parametrize('mixed', [False, True])
+def test_poller_and_web_store_the_same_t03_reading(api, monkeypatch, mixed):
     import cn_backend
     import client
     import db as poller_db
     import db_reader
-    car, session = wire_t03(api, monkeypatch, named())
+    payload = named()
+    if mixed:
+        signals = payload['data']['signalMap']
+        signals['1204'] = signals.pop('soc')
+    car, session = wire_t03(api, monkeypatch, payload)
     poller = object.__new__(client.LeapmotorMateClient)
     poller._api, poller._vehicle = api, car
     database = poller_db.Database(str(cn_backend.db_path()))

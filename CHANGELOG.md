@@ -3,6 +3,14 @@
 All notable changes to LeapMotor Mate are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **CN T03 mixed telemetry keeps its numbered readings.** Named auxiliary fields no longer erase
+  a numbered frame's valid SoC, motion or GPS. Explicit named values take precedence, invalid named
+  SoC still rejects the frame, and numbered placeholders in named-SoC frames remain untrusted.
+- **Overlapping car-picture refreshes publish complete packages.** Background and manual EU refreshes
+  use separate staging files; a failed replacement keeps the existing package and removes its staging file.
+
 ## [4.15.8] — 2026-10-21
 
 - **The official setup wizard offers the range-extender packs** ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli).
