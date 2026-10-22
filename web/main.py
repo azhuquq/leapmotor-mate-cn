@@ -2154,7 +2154,7 @@ def _build_research_export():
         # reason left to send anything less than all of it.
         try:
             try:
-                _fresh = command_client.get_fresh_signals()
+                _fresh = command_client.get_diagnostic_signals()
             except Exception:  # noqa: BLE001 — the car may be asleep; the rest of the report stands
                 _fresh = None
             z.writestr("diagnostics.txt", diagnostics.build_bundle(MATE_VERSION, signals=_fresh))
@@ -5099,7 +5099,7 @@ async def debug_signals():
     wrong sign. `gps_signals` isolates the GPS ids so a west-longitude user can paste just those;
     `all_signals` is the full dict for spotting an unmapped sign/hemisphere field."""
     import asyncio
-    sig = await asyncio.get_event_loop().run_in_executor(None, command_client.get_fresh_signals)
+    sig = await asyncio.get_event_loop().run_in_executor(None, command_client.get_diagnostic_signals)
     if not sig:
         return JSONResponse(
             {"error": "no live signals (car asleep or unreachable) — retry right after using the car"},
@@ -5148,7 +5148,7 @@ async def diagnostics_logs(which: str = "poller"):
 async def diagnostics_signals_fragment():
     """The car's current raw signal dict (live fetch), as an HTMX fragment for the card."""
     import asyncio
-    sig = await asyncio.get_event_loop().run_in_executor(None, command_client.get_fresh_signals)
+    sig = await asyncio.get_event_loop().run_in_executor(None, command_client.get_diagnostic_signals)
     text = (json.dumps(sig, indent=2, sort_keys=True) if sig
             else "(no live signals — car asleep or unreachable; retry right after using the car)")
     return _diag_pre(text, "signals.json")
@@ -5165,7 +5165,7 @@ async def diagnostics_bundle(parts: str = "info,poller,web,signals"):
     signals = None
     if "signals" in sel:
         import asyncio
-        signals = await asyncio.get_event_loop().run_in_executor(None, command_client.get_fresh_signals)
+        signals = await asyncio.get_event_loop().run_in_executor(None, command_client.get_diagnostic_signals)
     body = diagnostics.build_bundle(MATE_VERSION, parts=sel, signals=signals)
     # The bundle is now days of logs; ship it zipped (plain text → ~10× smaller) so it stays a small
     # attachment on a GitHub issue. One entry, same redaction already applied to `body`.

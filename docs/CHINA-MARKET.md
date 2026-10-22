@@ -48,6 +48,14 @@ docker compose up -d --build
 
 控制先驗證操作 PIN，再送出一次請求。雲端標量 `msgID` 只代表受理，畫面不會直接宣稱成功；可觀察的控制再以新車況確認。充電計畫查詢收到正確的標量成功回覆後才記為已確認。逾時不會自動重送控制。
 
+### T03 車況相容
+
+T03 車況讀取參考 [MiRaToo/ha-leapmotor-cn 的 T03 解析](https://github.com/MiRaToo/ha-leapmotor-cn/blob/52b3ef34f7a7871741ee0160f814f920d69bdb2a/poller/api_client.py#L1177)：支援數字 `signalMap`、具名 `signalMap`／`signal` 及具名 `data`。具名電量 `soc`、里程 `totalMileage`、續航 `expectedMileage`、門鎖、胎壓、充電與空調讀數轉入共用中國區快照；布林值及數字字串按欄位轉換，缺失讀數保持未知。具名車況中的數字佔位值（例如 `2188=0`）不會蓋掉 `expectedMileage`。
+
+讀取沿用每 VIN 的 `getCarRoute.appRegion` 與 JSON 車況請求。時間優先使用具名車況內部的 `sts`／信號 1、`collectTimeMs`／`collectTime`，亦支援位於具名信號表旁的 T03 `collectTimeMs`；無時區日期以 UTC+8 解讀。外層伺服器 `collectTime` 不會使同一幀變新。共享位置權限及 GCJ02 轉換沿用原規則。此修改只涵蓋車況解析，尚待中國版 T03 車主驗證年款與實際讀數。
+
+診斷與原始信號入口直接讀取雲端信號，不再要求先成功解析電量；因此無法解析的信號仍可出現在下載的 diagnostics 中，協助排查格式差異。下載報告繼續去除具名／數字座標及遮蔽 VIN，不會把診斷原始信號當作正常車況寫入。若登入已失效，仍需先在設定頁重新短信登入，再下載診斷。
+
 ## 地圖與座標
 
 地圖採用 `ha-leapmotor-cn` 卡片相同的高德路網與衛星瓦片，支援自動、路網、衛星、深色四種底圖；底圖偏好會保存在瀏覽器。總覽、行程、事件、月報、地圖頁與充電地點選點共用同一套投影。
@@ -87,7 +95,7 @@ python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r poller/requirements.txt -r web/requirements.txt pytest pytest-xdist httpx playwright
 python -m playwright install chromium
-python -m pytest -q tests/test_cn_adapter.py tests/test_cn_token_refresh.py tests/test_cn_car_picture.py tests/test_cn_maps.py
+python -m pytest -q tests/test_cn_adapter.py tests/test_cn_t03.py tests/test_cn_token_refresh.py tests/test_cn_car_picture.py tests/test_cn_maps.py
 python -m pytest -q -n 4 --dist worksteal
 ```
 

@@ -456,7 +456,7 @@ class LeapmotorSession:
                         own or "?", self._STATUS_PATH_FALLBACK)
             return raw
 
-    def get_fresh_signals(self, vin: str | None = None) -> dict | None:
+    def get_fresh_signals(self, vin: str | None = None, *, diagnostic: bool = False) -> dict | None:
         """The live signals of the car `vin` names; without one, of the car the picker is on.
 
         🔴 A caller that WRITES what it reads names the car, and hands the same VIN to
@@ -471,6 +471,10 @@ class LeapmotorSession:
                     if vin and car is None:
                         return None    # a car this account no longer lists: read no other one instead
                     if getattr(self._api, "_mate_cn_api", False):
+                        if diagnostic:
+                            from cn_telemetry import extract_status_signals
+                            target = car or self._target()
+                            return extract_status_signals(self._api.get_vehicle_raw_status(target), target)
                         from vehicle_snapshot import SnapshotSignals
                         return SnapshotSignals(self._api.get_vehicle_snapshot(car or self._target()))
                     raw = self._raw_status(car)
@@ -1042,6 +1046,14 @@ def detect_vehicle(user: str, pwd: str, pin: str) -> dict:
 
 def get_fresh_signals(vin: str | None = None) -> dict | None:
     return _session.get_fresh_signals(vin)
+
+
+def get_diagnostic_signals(vin: str | None = None) -> dict | None:
+    """Original CN signals, even when their readings cannot be decoded. Never stored as a frame."""
+    from api_backend import is_china
+    if not is_china():
+        return get_fresh_signals(vin) if vin is not None else get_fresh_signals()
+    return _session.get_fresh_signals(vin, diagnostic=True)
 
 def get_charge_plan() -> dict | None:
     return _session.get_charge_plan()

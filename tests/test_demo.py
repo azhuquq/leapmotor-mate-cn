@@ -37,6 +37,7 @@ def test_install_patches_when_on(monkeypatch):
         get_fresh_signals=lambda *a, **k: "REAL")
     demo.install(cc)                          # flag on → cloud calls neutered
     assert cc.get_fresh_signals() is None
+    assert cc.get_diagnostic_signals() is None
     assert cc._session.execute() == (True, "demo")
 
 

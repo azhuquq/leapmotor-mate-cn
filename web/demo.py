@@ -59,6 +59,7 @@ def install(command_client, ha_client=None) -> None:
     except Exception:  # noqa: BLE001
         pass
     command_client.get_fresh_signals = lambda *a, **k: None     # refresh/debug re-render from DB
+    command_client.get_diagnostic_signals = lambda *a, **k: None
     for fn in ("seat_comfort", "set_climate_temp", "send_destination"):
         if hasattr(command_client, fn):
             try:

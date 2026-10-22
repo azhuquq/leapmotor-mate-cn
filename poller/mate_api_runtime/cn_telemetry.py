@@ -1,8 +1,99 @@
 """Decode CN semantics once for the poller, web, recorder and MQTT."""
 import dataclasses
 import math
+from datetime import datetime, timedelta, timezone
 from leapmotor_cn.protocol import gcj02_to_wgs84
 from vehicle_snapshot import VehicleData, VehicleSnapshot
+
+
+# CN T03 aliases adapted from MiRaToo/ha-leapmotor-cn, poller/api_client.py
+# (_T03_NAMED_SIGNALS, AGPLv3; source revision recorded in vendor/leapmotor_cn/NOTICE).
+# In particular, CN window percentages are NOT the EU rear-seat IDs 1879/1880/3727/3728.
+_T03_NAMED_SIGNALS = {
+    '1204': ('soc',), '1318': ('totalMileage',), '1319': ('speed',),
+    '3260': ('expectedMileage',), '2188': ('liveRemainingRange',),
+    '1010': ('gearStatus',), '1944': ('vehicleState',),
+    '2': ('longitude',), '3': ('latitude',),
+    '1298': ('driverDoorLockStatus',), '1281': ('bbcmBackDoorStatus',),
+    '1277': ('lbcmDriverDoorStatus',), '1278': ('rbcmDriverDoorStatus',),
+    '1279': ('lbcmLeftRearDoorStatus',), '1280': ('rbcmRightRearDoorStatus',),
+    '1258': ('bcmKeyPositionOn3',),
+    '2646': ('leftFrontTirePressure',), '2653': ('rightFrontTirePressure',),
+    '2660': ('leftRearTirePressure',), '2667': ('rightRearTirePressure',),
+    '644': ('leftFrontWindowPercent',), '645': ('leftRearWindowPercent',),
+    '865': ('rightFrontWindowPercent',), '866': ('rightRearWindowPercent',),
+    '1693': ('driverWindowStatus',), '1694': ('rightFrontWindowStatus',),
+    '1695': ('leftRearWindowStatus',), '1696': ('rightRearWindowStatus',),
+    '1938': ('acSwitch',), '2183': ('acSetting',),
+    '1349': ('indoorTemp', 'interiorTemp'), '1941': ('acAirVolume',),
+    '1943': ('acCircleMode',), '1177': ('batteryVoltage',),
+    '1178': ('batteryCurrent',), '1200': ('chargeRemainTime',),
+    '1182': ('minSingleTemp', 'minBatteryTemp'), '1149': ('chargeState',),
+    '1197': ('dcInputFastCharge',),
+}
+_T03_BOOLEAN_SIGNALS = frozenset((
+    '1298', '1281', '1277', '1278', '1279', '1280', '1258', '1938', '1943',
+    '1693', '1694', '1695', '1696',
+))
+
+
+def _is_t03(vehicle):
+    return str(getattr(vehicle, 'car_type', '') or '').strip().upper() == 'T03'
+
+
+def extract_status_signals(payload, vehicle):
+    """Read the original map without requiring a decodable SoC (also used by diagnostics)."""
+    from cn_backend import ChinaError, check
+    check(payload)
+    body = payload.get('data')
+    if not isinstance(body, dict): raise ChinaError('車輛暫未提供有效車況')
+    if body.get('vin') and str(body['vin']).lower() != vehicle.vin.lower():
+        raise ChinaError('車況回應車輛不一致')
+    raw = body.get('signalMap')
+    if _is_t03(vehicle):
+        raw = next((body[key] for key in ('signalMap', 'signal')
+                    if isinstance(body.get(key), dict) and body[key]), None)
+        if raw is None and any(name in body for names in _T03_NAMED_SIGNALS.values() for name in names):
+            raw = body
+    if not isinstance(raw, dict) or not raw: raise ChinaError('車輛暫未提供有效車況')
+    if raw.get('vin') and str(raw['vin']).lower() != vehicle.vin.lower():
+        raise ChinaError('車況回應車輛不一致')
+    return {str(k): v for k, v in raw.items()}
+
+
+def _t03_signals(raw):
+    named = any(name in raw for names in _T03_NAMED_SIGNALS.values() for name in names)
+    # Named maps can contain numbered placeholders, e.g. 2188=0 beside expectedMileage=160.
+    # Keep the original map for diagnostics, but never let placeholders override named readings.
+    signals = {} if named else dict(raw)
+    for sid, aliases in _T03_NAMED_SIGNALS.items():
+        for key in aliases if named else (sid,):
+            value = raw.get(key)
+            if sid in _T03_BOOLEAN_SIGNALS:
+                if isinstance(value, bool): value = int(value)
+                elif isinstance(value, str): value = {'true': 1, 'false': 0}.get(value.lower(), value)
+            value = number(value)
+            if value is not None:
+                signals[sid] = value
+                break
+    if named:
+        for key in ('sts', '1'):
+            if key in raw: signals[key] = raw[key]
+    return signals, named
+
+
+def _t03_timestamp(*values):
+    for value in values:
+        timestamp = number(value)
+        if timestamp is not None and 1_000_000_000 <= timestamp < 100_000_000_000_000:
+            return int(timestamp * 1000 if timestamp < 100_000_000_000 else timestamp)
+        if isinstance(value, str):
+            try:
+                date = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                if date.tzinfo is None: date = date.replace(tzinfo=timezone(timedelta(hours=8)))
+                return max(0, int(date.timestamp() * 1000))
+            except (ValueError, OverflowError, OSError): pass
+    return 0
 
 
 def number(value):
@@ -14,16 +105,14 @@ def number(value):
 
 def decode_status(payload, vehicle):
     from cn_backend import ChinaError
+    raw = extract_status_signals(payload, vehicle)
     body = payload.get('data') or {}
-    if body.get('vin') and body['vin'].lower() != vehicle.vin.lower(): raise ChinaError('車況回應車輛不一致')
-    raw = body.get('signalMap')
-    if not isinstance(raw, dict) or not raw: raise ChinaError('車輛暫未提供有效車況')
-    raw = {str(k): v for k, v in raw.items()}
+    signals, named = _t03_signals(raw) if _is_t03(vehicle) else (raw, False)
     values = {field.name: (field.default if field.default is not dataclasses.MISSING else None)
               for field in dataclasses.fields(VehicleData)}
     reported = set()
     def read(field, *ids, kind=float, default=None):
-        found = next((number(raw.get(sid)) for sid in ids if number(raw.get(sid)) is not None), None)
+        found = next((number(signals.get(sid)) for sid in ids if number(signals.get(sid)) is not None), None)
         if found is not None:
             values[field] = kind(found); reported.add(field)
         else: values[field] = default
@@ -35,15 +124,20 @@ def decode_status(payload, vehicle):
     read('speed_kmh', '1319', default=0.0)
     values['speed_reported'] = 'speed_kmh' in reported
     values['odometer_reported'] = 'odometer_km' in reported
-    gear = number(raw.get('1010'))
+    gear = number(signals.get('1010'))
     values['gear'] = {0: 'P', 1: 'R', 2: 'N', 3: 'D'}.get(gear, 'P')
     if gear in (0, 1, 2, 3): reported.add('gear')
     driving = values['gear'] in ('R', 'N', 'D') or values['speed_kmh'] > 1
     values['vehicle_state'] = 'driving' if driving else 'parked'
-    timestamp = number(raw.get('sts')) or number(raw.get('1'))
+    timestamp = number(signals.get('sts')) or number(signals.get('1'))
     if timestamp and 1_000_000_000 <= timestamp < 100_000_000_000: timestamp *= 1000
+    if named:
+        # T03's collectTimeMs can sit beside the map or inside it. Prefer timestamps in
+        # the frame; the enclosing server collectTime must never make that frame look new.
+        timestamp = _t03_timestamp(raw.get('sts'), raw.get('1'), raw.get('collectTimeMs'),
+                                   raw.get('collectTime'), body.get('collectTimeMs'))
     values.update(vin=vehicle.vin, timestamp_ms=int(timestamp or 0), market='CN', raw_signals=raw)
-    charge = number(raw.get('1149'))
+    charge = number(signals.get('1149'))
     code = int(charge) if charge is not None and charge.is_integer() else None
     values['charge_state_code'] = code
     if code is not None: reported.add('charge_state_code')
@@ -71,7 +165,12 @@ def decode_status(payload, vehicle):
                       'door_rear_left_open': '1279', 'door_rear_right_open': '1280', 'dc_gun_connected': '1197'}.items():
         read(name, sid, kind=lambda n: n != 0, default=False if name != 'dc_gun_connected' else None)
     values['any_door_open'] = any(values[k] for k in ('trunk_open', 'door_driver_open', 'door_passenger_open', 'door_rear_left_open', 'door_rear_right_open'))
-    window_values = [number(raw.get(k)) for k in ('1693', '1694', '1695', '1696')]
+    window_values = [number(signals.get(k)) for k in ('1693', '1694', '1695', '1696')]
+    if _is_t03(vehicle):
+        for i, sid in enumerate(('644', '865', '645', '866')):
+            percent = number(signals.get(sid))
+            if percent is not None:
+                window_values[i] = int(bool(window_values[i]) or percent != 0)
     values['windows_open'] = any(v is not None and v != 0 for v in window_values)
     if any(v is not None for v in window_values): reported.add('windows_open')
     # Per-corner ordering is not established in the CN corpus. Never fabricate four corner states.
@@ -98,8 +197,8 @@ def decode_status(payload, vehicle):
     if not values['is_reev']:
         for k in ('fuel_level_pct', 'fuel_liters', 'fuel_range_km', 'combined_range_km'):
             values[k] = None; reported.discard(k)
-    lat = next((number(raw.get(k)) for k in ('3', '3725', '2190') if number(raw.get(k)) is not None), None)
-    lon = next((number(raw.get(k)) for k in ('2', '3724', '2191') if number(raw.get(k)) is not None), None)
+    lat = next((number(signals.get(k)) for k in ('3', '3725', '2190') if number(signals.get(k)) is not None), None)
+    lon = next((number(signals.get(k)) for k in ('2', '3724', '2191') if number(signals.get(k)) is not None), None)
     permitted_gps = not vehicle.is_shared or 300 in vehicle.module_rights
     if permitted_gps and lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180 and (lat or lon):
         values['latitude'], values['longitude'] = gcj02_to_wgs84(lat, lon)
