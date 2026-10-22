@@ -27,6 +27,7 @@ def _svc():
 def _data(**kw):
     base = dict(plug_connected=None, charging_status=0, climate_on=None)
     base.update(kw)
+    base["cable_connected"] = base["plug_connected"]   # the cable as the pages read it (#429)
     return types.SimpleNamespace(**base)
 
 

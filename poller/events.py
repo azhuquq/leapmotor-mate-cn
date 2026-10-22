@@ -29,13 +29,23 @@ def _unlocked(r):
     return None if r["is_locked"] is None else int(r["is_locked"] != 1)
 
 
+def cable_in_port(plug_connected, ac_port_mode, gear, speed_kmh) -> bool:
+    """The cable in the port: the charge session (1149), or the AC port reporting a cable (47 at 1) on a
+    parked car. A car that has finished its charge, or waits for its schedule, ends the session with the
+    cable still in. The events read it here and the MQTT plug sensor through
+    `client.VehicleData.cable_connected` (#429); the web keeps its own copy in
+    `db_reader.get_latest_status`, and `test_the_mqtt_plug_sensor_shows_the_cable_the_pages_show` holds
+    the sensor and the pages to one answer."""
+    parked = gear in (None, "P") and (speed_kmh or 0) <= 1
+    return bool(plug_connected) or (ac_port_mode == 1 and parked)
+
+
 def _cable(r):
     """The cable in the port: the charge session, or the AC port reporting a cable on a parked car
     while the charger withholds the current (a wallbox waiting for its schedule)."""
     if r["plug_connected"] is None:
         return None
-    parked = r["gear"] in (None, "P") and (r["speed_kmh"] or 0) <= 1
-    return int(bool(r["plug_connected"]) or (r["ac_port_mode"] == 1 and parked))
+    return int(cable_in_port(r["plug_connected"], r["ac_port_mode"], r["gear"], r["speed_kmh"]))
 
 
 def _v2l(r):

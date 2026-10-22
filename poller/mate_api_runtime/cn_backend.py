@@ -20,7 +20,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode, urlsplit
@@ -102,6 +102,20 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl): return None
 
 
+def audit_response(method, url, status, code):
+    """Same bounded answer log as the EU bridge; never persist headers, parameters or bodies."""
+    path = urlsplit(url).path
+    try:
+        with connect() as db:
+            db.execute('''CREATE TABLE IF NOT EXISTS api_v2_http_log
+                (id INTEGER PRIMARY KEY, at TEXT, method TEXT, path TEXT, http_status INTEGER, api_code TEXT)''')
+            db.execute('INSERT INTO api_v2_http_log(at,method,path,http_status,api_code) VALUES (?,?,?,?,?)',
+                       (datetime.now(timezone.utc).isoformat(), method, path, status, str(code)))
+            db.execute('DELETE FROM api_v2_http_log WHERE id < (SELECT MAX(id)-10000 FROM api_v2_http_log)')
+    except sqlite3.Error:
+        log.warning('CN cloud answer could not be recorded')
+
+
 def http_request(method, url, headers, body=None, form=False):
     parts = urlsplit(url)
     origin(parts.scheme + '://' + parts.netloc)
@@ -115,14 +129,26 @@ def http_request(method, url, headers, body=None, form=False):
         with opener.open(request, timeout=25) as response:
             raw = response.read(2_000_001)
     except urllib.error.HTTPError as exc:
+        audit_response(method, url, exc.code, 'http_error')
         if exc.code == 401: raise ChinaAuthRequired('中國區車端登入資料已失效', 401) from None
         raise ChinaError('中國區服務 HTTP %s' % exc.code, exc.code) from None
     except (OSError, urllib.error.URLError):
+        audit_response(method, url, 0, 'transport_error')
         raise ChinaError('中國區服務暫時無法連線，已保留登入資料') from None
-    if len(raw) > 2_000_000: raise ChinaError('中國區回應超過大小限制')
+    if len(raw) > 2_000_000:
+        audit_response(method, url, 200, 'oversized_response')
+        raise ChinaError('中國區回應超過大小限制')
     try: result = json.loads(raw)
-    except (ValueError, UnicodeError): raise ChinaError('中國區服務回應格式無效') from None
-    if not isinstance(result, dict): raise ChinaError('中國區服務回應格式無效')
+    except (ValueError, UnicodeError):
+        audit_response(method, url, 200, 'invalid_json')
+        raise ChinaError('中國區服務回應格式無效') from None
+    if not isinstance(result, dict):
+        audit_response(method, url, 200, 'invalid_json')
+        raise ChinaError('中國區服務回應格式無效')
+    code = result.get('code', result.get('result'))
+    # Only numeric codes belong in public diagnostics, even if the cloud puts text in result.
+    safe_code = code if type(code) is int or (isinstance(code, str) and re.fullmatch(r'-?[0-9]{1,12}', code)) else 'invalid_code'
+    audit_response(method, url, 200, [safe_code])
     return result
 
 

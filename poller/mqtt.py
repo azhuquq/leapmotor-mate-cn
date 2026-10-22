@@ -422,7 +422,7 @@ class MqttService:
         pub("climate_power", data.climate_power)             # 1348 PTC power in W (None when absent)
         pub("recirculation", data.recirculation)             # binary: recirc on / fresh off
         pub("climate_mode", data.climate_mode_label or None) # auto/cool/heat/vent
-        pub("plug_connected", data.plug_connected)
+        pub("plug_connected", data.cable_connected)        # the cable as the pages show it (#429)
         pub("tire_fl", data.tire_fl_bar);       pub("tire_fr", data.tire_fr_bar)
         pub("tire_rl", data.tire_rl_bar);       pub("tire_rr", data.tire_rr_bar)
         pub("any_door_open", data.any_door_open); pub("trunk_open", data.trunk_open)
@@ -475,7 +475,7 @@ class MqttService:
         up EVCC. See docs/EVCC.md for a ready-to-paste vehicle config."""
         def b(v):
             return "" if v is None else ("true" if v else "false")
-        self.client.publish(f"{base}/evcc/plugged",  b(data.plug_connected),            retain=True)
+        self.client.publish(f"{base}/evcc/plugged",  b(data.cable_connected),           retain=True)
         self.client.publish(f"{base}/evcc/charging", b((data.charging_status or 0) > 0), retain=True)
         self.client.publish(f"{base}/evcc/climate",  b(data.climate_on),                retain=True)
 

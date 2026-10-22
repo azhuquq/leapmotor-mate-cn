@@ -1,8 +1,52 @@
 # LeapMotor Mate — Manuale utente
 
-> **Versione di Mate:** v4.15.4 · **Lingua:** Italiano
+> **Versione di Mate:** v4.15.8 · **Lingua:** Italiano
 
-## Novità della 4.15.4
+## Novità della 4.15.8
+
+**La procedura guidata offre i pacchi del range extender.** Una C10 o una B10 con range extender può
+scegliere il suo pacco (*28.4 kWh — REEV* o *18.8 kWh — REEV*) sotto *Pacco batteria* nella procedura
+guidata. Finora la versione ufficiale li lasciava fuori dall'elenco.
+
+**Il pacchetto di diagnostica mostra cosa ha risposto il cloud.** Con *Info sistema* spuntato, il file di
+*Impostazioni → Diagnostica → Scarica diagnostica* ha una sezione con le risposte del cloud alle ultime
+richieste di Mate: quante per indirizzo, e ogni accesso, rinnovo e risposta rifiutata, con l'ora. Non
+contiene parametri, VIN né token.
+
+### Novità della 4.15.7
+
+**La salute della batteria conta intera una ricarica unita.** Una ricarica che l'auto ha registrato a
+pezzi e che è stata unita in una sola sessione (da Mate dopo una breve pausa, o a mano con *Unisci alla
+precedente* nella pagina *Ricariche*) ora dà alla pagina *Salute batteria* l'energia di tutti i suoi pezzi.
+Finora contava solo il primo pezzo: la ricarica restava fuori dal grafico, oppure dava una capacità
+calcolata su una parte sola della sessione.
+
+### Novità della 4.15.6
+
+**Il sensore MQTT della presa segue il cavo.** Con MQTT attivo, il sensore *Plug Connected* (e
+`evcc/plugged` per EVCC) ora è acceso ogni volta che la Panoramica mostra il cavo: anche dopo che una
+ricarica è finita, o mentre una ricarica aspetta la sua programmazione, con il cavo ancora dentro. Finora
+seguiva solo la sessione di ricarica, e si spegneva con il cavo ancora inserito.
+
+**La foto dell'auto compare subito.** Mentre l'auto carica, la Panoramica mostra subito l'auto con il
+cavo e mette al suo posto l'animazione della ricarica quando è pronta, invece di una scheda vuota per
+qualche secondo. Dopo un riavvio di Mate anche la prima foto non aspetta più un download.
+
+### Novità della 4.15.5
+
+**La pagina Salute batteria tiene le tue viste.** La pagina si aggiorna ancora da sola quando resta
+aperta, e ora le viste scelte nei suoi due grafici (*Distanza*, *% perso*, *per data*) tornano con lei:
+restano nell'indirizzo della pagina, come il mese di un calendario.
+
+**Il grafico di una ricarica in corso non sfarfalla più.** A ogni aggiornamento, ogni 30 secondi, la
+scheda restava un attimo senza grafico e la pagina sotto saltava; ora il grafico nuovo prende il posto
+di quello vecchio.
+
+**La temperatura esterna dopo un riavvio.** Quando Open-Meteo rifiuta la prima richiesta dopo un
+riavvio di Mate, Mate tiene la lettura dell'ultima posizione dell'auto, se ha meno di 20 minuti, invece
+di restare fino a 20 minuti senza.
+
+### Novità della 4.15.4
 
 **La temperatura esterna senza GPS.** Quando il cloud non manda la posizione GPS di un'auto ferma,
 Mate chiede la temperatura esterna nell'ultima posizione nota dell'auto, purché il contachilometri non
@@ -989,7 +1033,7 @@ ricarica in corso…) restano freschi senza ricaricare la pagina.
 
 Un calendario tiene nell'indirizzo della pagina il mese che stai guardando, quindi un ricaricamento —
 della pagina o tuo — riporta quel mese con il giorno o l'intervallo che avevi aperto; **Torna a oggi**
-torna al mese corrente.
+torna al mese corrente. **Salute batteria** fa lo stesso con le viste scelte nei suoi due grafici.
 
 **Lingua, valuta e unità** si cambiano da *Impostazioni → 🌍 Lingua e valuta*:
 

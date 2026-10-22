@@ -405,9 +405,27 @@ document.addEventListener('htmx:afterRequest', function(e) {
   tick();
 });
 
+// The charging animation replaces the still car picture once loaded; an empty card while it is composed reads as broken.
+// Asked for once the still one has come or failed: with no package on disk, that first request alone downloads it.
+function showLivePicture() {
+  var img = document.querySelector('#hero-body img[data-live]');
+  if (!img) return;
+  function swap() {
+    var live = new Image();
+    live.src = img.dataset.live;
+    function show() {                                     // also undoes a failed still picture's onerror
+      img.src = live.src; img.style.display = ''; img.nextElementSibling.style.display = '';
+    }
+    if (live.complete) { show(); return; }                // loaded before on this page: no still frame in between
+    live.onload = show;
+  }
+  if (img.complete) swap(); else img.decode().then(swap, swap);
+}
+showLivePicture();
+
 // Re-apply the ⏳ + pill right after the body refetches (the swap recreated the buttons).
 document.addEventListener('htmx:afterSwap', function(e) {
-  if (e.detail.target && e.detail.target.id === 'hero-body') tick();
+  if (e.detail.target && e.detail.target.id === 'hero-body') { tick(); showLivePicture(); }
 });
 </script>
 {% endblock %}

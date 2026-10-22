@@ -10689,7 +10689,8 @@ _SOH_TOP_CUTOFF_SOC = 95.0    # above this the BMS re-anchors an LFP's counted S
 _SOH_SOC_BUDGET = 200.0       # how many SoC points the headline pools over (see get_battery_health)
 
 
-def _charge_energy_below_soc(db, start: str, end: str | None, cap_soc: float):
+def _charge_energy_below_soc(db, start: str, end: str | None, cap_soc: float,
+                             exclude_ids: tuple = ()):
     """(energy, SoC reached) for the part of a charge BELOW `cap_soc`, or None when there is none.
 
     ∫|V·I|dt over the logged samples (trapezoidal, signals 1177/1178 — the same source as the
@@ -10704,7 +10705,7 @@ def _charge_energy_below_soc(db, start: str, end: str | None, cap_soc: float):
     Truncating rather than discarding is the point. A charge to 100 % is the one that re-calibrates
     the pack and belongs in the history; only its last few points are excluded from the arithmetic."""
     if end:
-        lo, hi, excl = _power_window_bounds(db, start, end)
+        lo, hi, excl = _power_window_bounds(db, start, end, exclude_ids)
         rows = db.execute(
             "SELECT recorded_at, soc, charge_voltage_v, charge_current_a FROM positions "
             "WHERE vehicle_id = COALESCE(?, vehicle_id) AND " + _charging_sample() + " AND recorded_at >= ? "
@@ -10879,7 +10880,8 @@ def _battery_health(min_soc_delta: float, temp_min_c, min_start_soc: float) -> d
             continue
         # Capacity comes from the part of the charge BELOW the re-anchor zone; everything the user
         # SEES about the charge (its real delta, where it ended) is unchanged.
-        below = _charge_energy_below_soc(db, r["started_at"], r["ended_at"], _SOH_TOP_CUTOFF_SOC)
+        below = _charge_energy_below_soc(db, r["started_at"], r["ended_at"], _SOH_TOP_CUTOFF_SOC,
+                                         tuple(r.get("child_ids", ())))
         if not below:
             continue
         energy, reached, covered = below

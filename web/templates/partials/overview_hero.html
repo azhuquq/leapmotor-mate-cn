@@ -90,7 +90,12 @@
                              status.door_driver_open, status.door_passenger_open,
                              status.door_rear_left_open, status.door_rear_right_open,
                              status.window_fl_open, status.window_rl_open] | join('-')) if status else '' %}
-    <img src="api/car-picture?v={{ car_img_token }}{% if china_market is defined and china_market() and vehicle %}&amp;vehicle_id={{ vehicle.id }}{% endif %}" alt="{{ vehicle.car_type if vehicle else 'Vehicle' }}"
+    {% set cn_picture = china_market is defined and china_market() %}
+    {% set car_img = 'api/car-picture?v=' ~ car_img_token ~ ('&vehicle_id=' ~ vehicle.id if cn_picture and vehicle else '') %}
+    {# CN already serves a still whole-car render; EU composes the animation alongside it. #}
+    {% set animate_picture = status and status.charging and not cn_picture %}
+    <img src="{{ car_img ~ '&still=1' if animate_picture else car_img }}"
+         {% if animate_picture %}data-live="{{ car_img }}"{% endif %} alt="{{ vehicle.car_type if vehicle else 'Vehicle' }}"
          class="max-h-48 w-full object-contain"
          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
     <div class="hidden flex-col items-center justify-center text-slate-600" style="height:12rem">

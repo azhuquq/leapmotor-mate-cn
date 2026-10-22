@@ -5,6 +5,10 @@ long as the page is open: a night's charge is over a thousand of them. The panel
 before every swap, the one that empties it when the charge ends included; a poll that fails swaps
 nothing, and the chart it would have replaced stays.
 
+The new chart is drawn in the step that swaps it in. htmx runs a swapped-in script when it settles the
+swap, 20 ms later by default, and the browser painted in between: the card without its chart, and the
+page under it jumping up by the chart's height and back, at every poll.
+
 Measured in a real browser, like the other chart tests; skips where it cannot run.
 """
 import sqlite3
@@ -33,7 +37,7 @@ def _a_charge_in_progress():
     return rows
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def mate(tmp_path_factory):
     data = tmp_path_factory.mktemp("mate-live-chart")
     db = data / "leapmotor_mate.db"
@@ -53,6 +57,13 @@ _DRAWN = "() => { const e = document.querySelector('#charging-chart-panel [id^=p
 _SWAP = "() => htmx.ajax('GET', 'api/charging-chart', { target: '#charging-chart-panel', swap: 'innerHTML' })"
 _FAILED = "() => htmx.ajax('GET', 'api/charging-chart/nowhere', { target: '#charging-chart-panel', swap: 'innerHTML' })"
 _CANVASES = "() => document.querySelectorAll('.apexcharts-canvas').length"
+# A poll as the panel is set up for, looked at right after the swap's own step: a timer set then fires
+# before any the swap leaves behind.
+_DRAWN_AFTER_ITS_SWAP = """() => new Promise(done => {
+  const panel = document.getElementById('charging-chart-panel');
+  panel.addEventListener('htmx:afterSwap', () => setTimeout(() => done(!!(%s)()), 0), { once: true });
+  htmx.ajax('GET', 'api/charging-chart', { source: panel });
+})""" % _DRAWN
 
 
 def _alive(page):
@@ -94,6 +105,19 @@ def test_a_redrawn_chart_does_not_outlive_its_element(mate):
         assert _alive(page) < drawn_once, "the chart of the charge that ended was not destroyed"
         assert page.evaluate(_CANVASES) == 0
         assert errors == []
+    finally:
+        browser.close()
+        pw.stop()
+
+
+def test_a_redrawn_chart_is_in_place_before_the_browser_paints(mate):
+    url, _ = mate
+    pw, browser = chromium(sync_api)
+    try:
+        page = browser.new_page()
+        assert page.goto(f"{url}/charges").status == 200
+        page.wait_for_function(_DRAWN)
+        assert page.evaluate(_DRAWN_AFTER_ITS_SWAP), "the card was swapped in without its chart"
     finally:
         browser.close()
         pw.stop()

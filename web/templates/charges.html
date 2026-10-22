@@ -73,11 +73,11 @@
   </div>
 
   <!-- The chart of the charge in progress: after the battery on a phone, a row of its own on a wide
-       screen, no cell while none runs; its ApexCharts instance is destroyed before a swap replaces it -->
+       screen, no cell while none runs; its chart is destroyed before a swap and drawn anew within it -->
   <div id="charging-chart-panel" class="contents"
        hx-get="api/charging-chart"
        hx-trigger="every 30s"
-       hx-swap="innerHTML"
+       hx-swap="innerHTML settle:0ms"
        hx-on::before-swap="if (event.detail.shouldSwap) this.querySelectorAll('[id^=pc-]').forEach(function (e) { if (e._c) e._c.destroy(); })">
     {% include "partials/charging_chart.html" %}
   </div>

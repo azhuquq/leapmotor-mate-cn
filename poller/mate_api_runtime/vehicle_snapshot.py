@@ -103,6 +103,14 @@ class VehicleData:
     windows_open_count: int | None = None
 
     @property
+    def cable_connected(self) -> bool | None:
+        if self.market == 'CN':
+            # CN 1149 has its own plug states; EU's latched AC-port bit cannot override them.
+            return self.plug_connected if 'plug_connected' in (self.reported_fields or ()) else None
+        from events import cable_in_port
+        return cable_in_port(self.plug_connected, self.ac_port_mode, self.gear, self.speed_kmh)
+
+    @property
     def v2l_active(self) -> bool:
         """True when the AC port is in V2L / bidirectional-discharge mode (powering an external
         load). The DELIVERED power is gated separately on real discharge current (1178)."""

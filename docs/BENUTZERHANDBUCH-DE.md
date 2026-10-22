@@ -1,8 +1,52 @@
 # LeapMotor Mate — Benutzerhandbuch
 
-> **Mate-Version:** v4.15.4 · **Sprache:** Deutsch
+> **Mate-Version:** v4.15.8 · **Sprache:** Deutsch
 
-## Neu in Version 4.15.4
+## Neu in Version 4.15.8
+
+**Der Einrichtungsassistent bietet die Range-Extender-Pakete an.** Ein C10 oder B10 mit Range-Extender
+kann im Einrichtungsassistenten unter *Batteriepaket* sein Paket wählen (*28.4 kWh — REEV* oder
+*18.8 kWh — REEV*). Bisher ließ die offizielle Version diese Pakete aus der Liste weg.
+
+**Das Diagnosepaket zeigt, was die Cloud geantwortet hat.** Mit angehakter *Systeminfo* enthält die Datei
+aus *Einstellungen → Diagnose → Diagnose herunterladen* einen Abschnitt mit den Antworten der Cloud auf
+Mates letzte Anfragen: wie viele pro Endpunkt, und jede Anmeldung, Erneuerung und abgelehnte Antwort mit
+ihrer Uhrzeit. Er enthält keine Parameter, keine FIN und keine Tokens.
+
+### Neu in Version 4.15.7
+
+**Der Batteriezustand zählt einen zusammengeführten Ladevorgang ganz.** Ein Ladevorgang, den das Auto in
+Teilen gemeldet hat und der zu einer Sitzung zusammengeführt wurde (von Mate nach einer kurzen Pause oder
+von Hand mit *Mit vorherigem zusammenführen* auf der Seite *Ladevorgänge*), liefert der Seite
+*Batteriezustand* jetzt die Energie aller Teile. Bisher zählte nur der erste Teil: Der Ladevorgang fehlte
+im Diagramm oder ergab eine Kapazität aus nur einem Teil der Sitzung.
+
+### Neu in Version 4.15.6
+
+**Der MQTT-Stecker-Sensor folgt dem Kabel.** Mit MQTT ist der Sensor *Plug Connected* (und für EVCC
+`evcc/plugged`) jetzt immer dann an, wenn die Übersicht das Kabel zeigt: auch nach einem beendeten
+Ladevorgang oder während ein Ladevorgang auf seinen Zeitplan wartet, mit dem Kabel noch eingesteckt.
+Bisher folgte er nur der Ladesitzung und ging bei noch eingestecktem Kabel aus.
+
+**Das Fahrzeugbild erscheint sofort.** Während das Auto lädt, zeigt die Übersicht sofort das Auto mit
+seinem Kabel und setzt die Ladeanimation ein, sobald sie bereit ist, statt einige Sekunden eine leere
+Karte. Nach einem Neustart von Mate wartet auch das erste Bild nicht mehr auf einen Download.
+
+### Neu in Version 4.15.5
+
+**Batteriezustand behält Ihre Ansichten.** Die Seite aktualisiert sich weiterhin selbst, wenn sie offen
+bleibt, und jetzt kommen die auf ihren beiden Diagrammen gewählten Ansichten (*Distanz*, *% verloren*,
+*pro Datum*) mit ihr zurück: Sie stehen in der Adresse der Seite, so wie ein Kalender seinen Monat hält.
+
+**Das Diagramm eines laufenden Ladevorgangs flackert nicht mehr.** Bei jeder Aktualisierung, alle
+30 Sekunden, war die Karte kurz ohne Diagramm und die Seite darunter sprang; jetzt nimmt das neue
+Diagramm den Platz des alten ein.
+
+**Die Außentemperatur nach einem Neustart.** Lehnt Open-Meteo die erste Abfrage nach einem Neustart von
+Mate ab, behält Mate den Wert der letzten Position des Autos, wenn er jünger als 20 Minuten ist, statt
+bis zu 20 Minuten ohne Wert zu bleiben.
+
+### Neu in Version 4.15.4
 
 **Die Außentemperatur ohne GPS.** Sendet die Cloud für ein stehendes Auto keine GPS-Position, fragt
 Mate die Außentemperatur an der letzten bekannten Position des Autos ab, solange sich der
@@ -1022,7 +1066,8 @@ laufender Ladevorgang…) frisch bleiben, ohne die Seite neu zu laden.
 
 Ein Kalender hält den angezeigten Monat in der Adresse der Seite, sodass ein Neuladen — das der Seite
 oder Ihres — diesen Monat mit dem geöffneten Tag oder Zeitraum zurückbringt; **Zu heute springen** kehrt
-zum aktuellen Monat zurück.
+zum aktuellen Monat zurück. **Batteriezustand** hält ebenso die auf seinen beiden Diagrammen gewählten
+Ansichten in der Adresse.
 
 **Sprache, Währung und Einheiten** ändern Sie unter *Einstellungen → 🌍 Sprache & Währung*:
 

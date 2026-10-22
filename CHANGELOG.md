@@ -3,6 +3,70 @@
 All notable changes to LeapMotor Mate are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.15.8] — 2026-10-21
+
+- **The official setup wizard offers the range-extender packs** ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli).
+  Since 4.7.0 the server hands the wizard every pack, range-extenders included, but the page took them
+  out again on every build but the BetaTester. A C10 or a B10 with a range extender could not pick its
+  pack (28.4 or 18.8 kWh) in the official wizard; an owner moving from the beta got it back only because
+  the restore carries the setting. The page now draws every pack; a browser test checks both pickers, the
+  one for a single car and the per-car cards.
+- **The diagnostics bundle shows what the cloud answered** ([#432](https://github.com/ProtossBlaster/leapmotor-mate/pull/432), @arekm). With *System info*
+  ticked, a new section after *polling* counts the answers per endpoint by HTTP status and cloud code,
+  then lists every login, renewal and refused answer, oldest first, at most 200 lines: time, endpoint,
+  status and code, never a parameter, a VIN or a token. It comes from the record Mate already kept of
+  each answer (the last 10,000). A car picture answered without its package is now recorded as refused
+  (`not_a_zip`) rather than as an accepted `[0]`.
+
+## [4.15.7] — 2026-10-20
+
+- **Battery health counts a joined charge whole** ([#430](https://github.com/ProtossBlaster/leapmotor-mate/pull/430), @ElRoscaoJr). A charge the car
+  reported in pieces and that is joined into one session (by Mate after a short pause, or by hand with
+  *Join with previous*) had its energy read only up to the start of its second piece, which the window
+  took for the next charge. The Battery health page then left the session out, when the first piece alone
+  was under the 12-point minimum, or estimated the pack from part of it. The window now skips the
+  session's own pieces and still stops at the next independent charge. On the test instance's database 3
+  of 4 joined sessions change: one from 72.5 kWh / 108.0 % (its first piece, 13.8 of 33.7 points) to
+  68.1 kWh / 101.5 %, and one enters the chart; the headline figure is unchanged.
+- **The BetaTester build is closing by 20 November 2026.** The guide to moving to the official build
+  (`docs/BETA-TO-OFFICIAL.md`) says so, no longer tells research-diary users to stay, and lists the
+  settings to type again after the restore: the restore drops every secret in the backup (MQTT password,
+  Home Assistant and ABRP tokens, map keys), not only the Leapmotor login.
+
+## [4.15.6] — 2026-10-18
+
+- **The MQTT plug sensor shows the cable the pages show** ([#429](https://github.com/ProtossBlaster/leapmotor-mate/issues/429)). Since 4.10.0 the pages show
+  the cable when the charge session says so (signal 1149) or when the AC port reports one on a parked car
+  (signal 47 at 1): a car that has finished its charge, or waits for its schedule, ends the session with
+  the cable still in. The MQTT `plug_connected` sensor and `evcc/plugged` kept publishing the session
+  alone, so such a car read *Plugged* on the Overview and OFF in Home Assistant. Both topics now publish
+  the cable as the pages do, from one rule (`events.cable_in_port`) the events read too; the session the
+  poller opens and closes charges on is unchanged. A test holds the sensor and the pages to one answer.
+- **The Overview shows the car picture at once, also while charging** ([#427](https://github.com/ProtossBlaster/leapmotor-mate/pull/427), @arekm). While the
+  car charges, the picture is an animation that took about 2.5 s to compose on Home Assistant's 4 cores,
+  and the card stayed empty meanwhile. The page now shows the car with its cable in first
+  (`/api/car-picture?still=1`) and puts the animation in its place once it has come. After a restart, the
+  first picture comes from the package on disk while the once-per-start download runs alongside, so a
+  new colour shows on a later load; with no package on disk, or on a manual refresh, the request waits
+  for the download, as before.
+
+## [4.15.5] — 2026-10-18
+
+- **The Battery health page keeps the views you picked** ([#426](https://github.com/ProtossBlaster/leapmotor-mate/pull/426), @arekm). The page reloads
+  itself every 30 s when left open, and the reload put its two charts back on *Time*, *%/day* and *per
+  stop*. The views picked now go into the page's address (`?capacity_by=distance&drain=lost&drain_per=date`,
+  only those not at their default), as a calendar keeps its month, so the reload, a link or the browser's
+  Back draws them again. The page still reloads itself; opening it from the menu shows the defaults. The
+  calendars' own address code is now the same helper, `lmKeepInAddress`.
+- **The chart of a charge in progress is redrawn without a blink** ([#422](https://github.com/ProtossBlaster/leapmotor-mate/pull/422), @arekm). At every
+  30 s update the card showed for 0.07 to 0.17 s without its chart, and the page under it jumped up by
+  the chart's height and back. The panel now settles at once (`settle:0ms`), so the new chart is drawn in
+  the step that swaps it in.
+- **A restart keeps the outside temperature the car had** ([#425](https://github.com/ProtossBlaster/leapmotor-mate/pull/425), @arekm). When Open-Meteo refused
+  the first lookup after a restart (it answers 503 when it sheds load), there was no outside temperature
+  for up to 20 minutes. The sampler now starts from the reading on the car's newest position, if that
+  position is younger than 20 minutes; the first poll still asks, and how often Mate asks is unchanged.
+
 ## [4.15.4] — 2026-10-13
 
 - **A parked car whose GPS the cloud sends as zero keeps its outside temperature.** With the outside

@@ -29,8 +29,8 @@ docker compose up -d --build
 
 # LeapMotor Mate
 
-**v4.15.4:** with the outside temperature switched on, a parked car whose GPS the cloud sends as zero **keeps its outside temperature**: Mate asks about its last known position while the odometer has not changed. In **4.15.3**: the wallbox's line on a charge's chart is drawn from readings Mate keeps ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm).
-See [release notes and upgrade impact](docs/releases/v4.15.4.md).
+**v4.15.8:** the official setup wizard **offers the range-extender packs** of the C10 and B10 ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli); the diagnostics bundle **shows what the cloud answered** Mate's last requests ([#432](https://github.com/ProtossBlaster/leapmotor-mate/pull/432), @arekm). In **4.15.7**: Battery health counts a joined charge whole; the BetaTester build closes by 20 November 2026.
+See [release notes and upgrade impact](docs/releases/v4.15.8.md).
 
 [![CI](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml)
 [![Docker](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml)
@@ -389,8 +389,8 @@ Works with any MQTT broker (e.g. the Mosquitto add‑on). Use **Test connection*
 
 # LeapMotor Mate · Italiano
 
-**v4.15.4:** con la temperatura esterna attiva, un'auto ferma di cui il cloud manda il GPS a zero **mantiene la temperatura esterna**: Mate chiede il meteo nella sua ultima posizione nota finché il contachilometri non cambia. Nella **4.15.3**: la linea della wallbox nel grafico di una ricarica è tracciata dalle letture che Mate conserva ([#419](https://github.com/ProtossBlaster/leapmotor-mate/pull/419), @arekm).
-Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v4.15.4.md#italiano).
+**v4.15.8:** la procedura guidata ufficiale **offre i pacchi del range extender** di C10 e B10 ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli); il pacchetto di diagnostica **mostra cosa ha risposto il cloud** alle ultime richieste di Mate ([#432](https://github.com/ProtossBlaster/leapmotor-mate/pull/432), @arekm). Nella **4.15.7**: la Salute batteria conta intera una ricarica unita; la build BetaTester chiude entro il 20 novembre 2026.
+Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v4.15.8.md#italiano).
 
 **Tracciamento viaggi, registro ricariche e controllo remoto per veicoli Leapmotor** — un companion self‑hosted (un *TeslaMate* per Leapmotor). Funziona come **add‑on di Home Assistant** o come **container Docker standalone**.
 

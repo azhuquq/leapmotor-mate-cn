@@ -1,8 +1,52 @@
 # LeapMotor Mate — Manual de usuario
 
-> **Versión de Mate:** v4.15.4 · **Idioma:** Español
+> **Versión de Mate:** v4.15.8 · **Idioma:** Español
 
-## Novedades de la versión 4.15.4
+## Novedades de la versión 4.15.8
+
+**El asistente de configuración ofrece los paquetes del extensor de autonomía.** Un C10 o un B10 con
+extensor de autonomía puede elegir su paquete (*28.4 kWh — REEV* o *18.8 kWh — REEV*) en *Paquete de
+baterías* del asistente de configuración. Hasta ahora la versión oficial los dejaba fuera de la lista.
+
+**El paquete de diagnóstico muestra lo que respondió la nube.** Con *Información del sistema* marcado, el
+archivo de *Ajustes → Diagnóstico → Descargar el diagnóstico* tiene una sección con las respuestas de la
+nube a las últimas peticiones de Mate: cuántas por dirección, y cada inicio de sesión, renovación y
+respuesta rechazada, con su hora. No contiene parámetros, VIN ni tokens.
+
+### Novedades de la versión 4.15.7
+
+**La salud de la batería cuenta entera una carga unida.** Una carga que el coche registró en partes y que
+se unió en una sola sesión (por Mate tras una pausa corta, o a mano con *Unir con la anterior* en la página
+*Cargas*) ahora da a la página *Salud de la batería* la energía de todas sus partes. Hasta ahora solo
+contaba la primera parte: la carga quedaba fuera del gráfico, o daba una capacidad calculada con solo una
+parte de la sesión.
+
+### Novedades de la versión 4.15.6
+
+**El sensor MQTT del conector sigue al cable.** Con MQTT activado, el sensor *Plug Connected* (y
+`evcc/plugged` para EVCC) ahora está encendido siempre que el Resumen muestra el cable: también después
+de terminar una carga, o mientras una carga espera su programación, con el cable todavía conectado.
+Hasta ahora seguía solo la sesión de carga, y se apagaba con el cable aún conectado.
+
+**La imagen del coche aparece enseguida.** Mientras el coche carga, el Resumen muestra enseguida el coche
+con su cable y pone la animación de carga en su lugar cuando está lista, en vez de una tarjeta vacía
+durante unos segundos. Tras reiniciar Mate, la primera imagen tampoco espera ya una descarga.
+
+### Novedades de la versión 4.15.5
+
+**Salud de la batería conserva tus vistas.** La página sigue actualizándose sola cuando queda abierta, y
+ahora las vistas elegidas en sus dos gráficos (*Distancia*, *% perdido*, *por fecha*) vuelven con ella:
+se guardan en la dirección de la página, como un calendario guarda su mes.
+
+**El gráfico de una carga en curso ya no parpadea.** En cada actualización, cada 30 segundos, la
+tarjeta se quedaba un instante sin gráfico y la página de debajo saltaba; ahora el gráfico nuevo ocupa
+el lugar del anterior.
+
+**La temperatura exterior tras un reinicio.** Cuando Open-Meteo rechaza la primera consulta tras
+reiniciar Mate, Mate conserva la lectura de la última posición del coche, si tiene menos de 20 minutos,
+en lugar de quedarse hasta 20 minutos sin ella.
+
+### Novedades de la versión 4.15.4
 
 **La temperatura exterior sin GPS.** Cuando la nube no envía la posición GPS de un coche parado,
 Mate consulta la temperatura exterior en la última posición conocida del coche, siempre que el
@@ -1007,7 +1051,7 @@ Muchas páginas **se actualizan solas** más o menos cada 30 segundos, así que 
 
 Un calendario guarda en la dirección de la página el mes que estás mirando, así que una recarga —la de
 la página o la tuya— devuelve ese mes con el día o el intervalo que tenías abierto; **Ir a hoy** vuelve
-al mes actual.
+al mes actual. **Salud de la batería** hace lo mismo con las vistas elegidas en sus dos gráficos.
 
 **El idioma, la moneda y las unidades** se cambian desde *Ajustes → 🌍 Idioma y moneda*:
 

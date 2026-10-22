@@ -1,8 +1,51 @@
 # LeapMotor Mate — User Manual
 
-> **Mate version:** v4.15.4 · **Language:** English
+> **Mate version:** v4.15.8 · **Language:** English
 
-## New in 4.15.4
+## New in 4.15.8
+
+**The setup wizard offers the range-extender packs.** A C10 or B10 with a range extender can pick its
+pack (*28.4 kWh — REEV* or *18.8 kWh — REEV*) under *Battery pack* in the setup wizard. Until now the
+official build left those packs out of the list.
+
+**The diagnostics bundle shows what the cloud answered.** With *System info* ticked, the file from
+*Settings → Diagnostics → Download diagnostics* has a section with the cloud's answers to Mate's last
+requests: how many per endpoint, and every sign-in, renewal and refused answer, with its time. It holds
+no parameters, VIN or tokens.
+
+### New in 4.15.7
+
+**Battery health counts a joined charge whole.** A charge the car reported in pieces and that is joined
+into one session (by Mate after a short pause, or by hand with *Join with previous* on the *Charges* page)
+now gives the *Battery health* page the energy of all its pieces. Until now only the first piece counted:
+the charge was left out of the chart, or gave a capacity from part of the session.
+
+### New in 4.15.6
+
+**The MQTT plug sensor follows the cable.** With MQTT on, the *Plug Connected* sensor (and EVCC's
+`evcc/plugged`) is now on whenever the Overview shows the cable: also after a charge has finished, or
+while a charge waits for its schedule, with the cable still in. Until now it followed only the charge
+session, and went off while the cable was still in.
+
+**The car picture shows at once.** While the car charges, the Overview shows the car with its cable in
+straight away and swaps in the charging animation once it is ready, instead of an empty card for a few
+seconds. After a restart of Mate the first picture no longer waits for a download either.
+
+### New in 4.15.5
+
+**The Battery health page keeps your views.** The page still refreshes itself when left open, and now
+the views picked on its two charts (*Distance*, *% lost*, *per date*) come back with it: they are kept in
+the page's address, as a calendar keeps its month.
+
+**The chart of a charge in progress no longer blinks.** At every update, every 30 seconds, the card
+showed for a moment without its chart and the page under it jumped; the new chart now takes the old
+one's place.
+
+**The outside temperature after a restart.** When Open-Meteo refuses the first lookup after Mate
+restarts, Mate keeps the reading of the car's last position, if it is less than 20 minutes old, instead
+of going up to 20 minutes without one.
+
+### New in 4.15.4
 
 **The outside temperature without GPS.** When the cloud sends no GPS position for a parked car, Mate
 looks the outside temperature up at the car's last known position, as long as the odometer has not
@@ -956,7 +999,7 @@ progress…) stay fresh without reloading the page.
 
 A calendar keeps the month you are looking at in the page's address, so a reload — the page's own or
 yours — brings that month back with the day or range you had open; **Jump to today** returns to the
-current month.
+current month. **Battery health** does the same with the views picked on its two charts.
 
 **Language, currency and units** are changed from *Settings → 🌍 Language & Currency*:
 
