@@ -50,6 +50,10 @@ docker compose up -d --build
 
 ### T03 車況相容
 
+中國版 T03 車主回報只有 D／N／R，停車時仍回報 N。中國區 T03 在 **N 檔且有車速報告 ≤1 km/h** 時視為停車，保留 N 檔原始顯示；D／R 即使車速為零仍視為行駛，N 檔移動中或缺少車速報告也不視為已停妥。此規則不套用至 B01 或其他車型，也不改變國際版行為。
+
+行駛後停在 N 檔，沿用 P 檔的行程結束確認窗口（預設 6 秒輪詢需連續 10 次）；READY 仍開啟時保留同一行程，避免短暫停車拆分行程。初次讀取靜止 N 檔不會建立行程，使用設定的停車輪詢間隔；重啟時也不會把舊版誤開的行程恢復為行駛。充電辨識、網頁與 MQTT 使用相同判定，仍需車主更新後驗證實車行駛與停車切換。
+
 T03 車況讀取參考 [MiRaToo/ha-leapmotor-cn 的 T03 解析](https://github.com/MiRaToo/ha-leapmotor-cn/blob/52b3ef34f7a7871741ee0160f814f920d69bdb2a/poller/api_client.py#L1177)：支援數字 `signalMap`、具名 `signalMap`／`signal` 及具名 `data`。具名電量 `soc`、里程 `totalMileage`、續航 `expectedMileage`、門鎖、胎壓、充電與空調讀數轉入共用中國區快照；布林值及數字字串按欄位轉換，缺失讀數保持未知。具名車況中的數字佔位值（例如 `2188=0`）不會蓋掉 `expectedMileage`。
 
 讀取沿用每 VIN 的 `getCarRoute.appRegion` 與 JSON 車況請求。時間優先使用具名車況內部的 `sts`／信號 1、`collectTimeMs`／`collectTime`，亦支援位於具名信號表旁的 T03 `collectTimeMs`；無時區日期以 UTC+8 解讀。外層伺服器 `collectTime` 不會使同一幀變新。共享位置權限及 GCJ02 轉換沿用原規則。此修改只涵蓋車況解析，尚待中國版 T03 車主驗證年款與實際讀數。

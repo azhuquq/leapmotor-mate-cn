@@ -120,6 +120,17 @@ def number(value):
     return result if math.isfinite(result) else None
 
 
+def is_driving(gear, speed_kmh, car_type):
+    """CN T03 parks in N; retain the actual gear and require a reported standstill.
+
+    D/R still mean driving at traffic lights. Missing speed cannot prove that N is
+    stationary. Other models keep their existing N-as-driving behaviour.
+    """
+    neutral_park = (str(car_type or '').strip().upper() == 'T03' and gear == 'N'
+                    and speed_kmh is not None and speed_kmh <= 1)
+    return (gear in ('R', 'N', 'D') and not neutral_park) or (speed_kmh or 0) > 1
+
+
 def decode_status(payload, vehicle):
     from cn_backend import ChinaError
     raw = extract_status_signals(payload, vehicle)
@@ -144,7 +155,8 @@ def decode_status(payload, vehicle):
     gear = number(signals.get('1010'))
     values['gear'] = {0: 'P', 1: 'R', 2: 'N', 3: 'D'}.get(gear, 'P')
     if gear in (0, 1, 2, 3): reported.add('gear')
-    driving = values['gear'] in ('R', 'N', 'D') or values['speed_kmh'] > 1
+    driving = is_driving(values['gear'], values['speed_kmh'] if values['speed_reported'] else None,
+                         vehicle.car_type)
     values['vehicle_state'] = 'driving' if driving else 'parked'
     timestamp = number(signals.get('sts')) or number(signals.get('1'))
     if timestamp and 1_000_000_000 <= timestamp < 100_000_000_000: timestamp *= 1000

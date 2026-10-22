@@ -1976,15 +1976,20 @@ class Database:
         order the rows were written (`trip_last_seen` takes them the same way). None when the trip
         has no start to read from."""
         trip = self._conn.execute(
-            "SELECT vehicle_id, started_at FROM trips WHERE id=?", (trip_id,)).fetchone()
+            "SELECT t.vehicle_id, t.started_at, v.car_type FROM trips t "
+            "LEFT JOIN vehicles v ON v.id=t.vehicle_id WHERE t.id=?", (trip_id,)).fetchone()
         if trip is None or not trip["started_at"]:
             return None
         rows = self._conn.execute(
-            f"SELECT id, {_READING_COLUMNS}, gear, ready FROM positions"
+            f"SELECT id, {_READING_COLUMNS}, gear, ready, market, speed_kmh FROM positions"
             " WHERE vehicle_id=? AND recorded_at>=? ORDER BY id",
             (trip["vehicle_id"], trip["started_at"])).fetchall()
         start = len(rows)
-        while start > 0 and rows[start - 1]["gear"] == "P":
+        from cn_telemetry import is_driving
+        def parked(row):
+            return row['gear'] == 'P' or (row['market'] == 'CN' and row['gear'] == 'N'
+                and not is_driving(row['gear'], row['speed_kmh'], trip['car_type']))
+        while start > 0 and parked(rows[start - 1]):
             start -= 1
         return trip, rows, start
 

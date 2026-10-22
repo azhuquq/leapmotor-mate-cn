@@ -204,7 +204,11 @@ class StateMachine:
         # Trip is "active" while the car is in a driving gear (D/R/N) or moving.
         # Gear-based like HA: at a red light the gear stays D, so the trip is NOT
         # split — only a sustained gear P ends it (see DRIVING branch below).
-        is_driving  = data.gear in ("D", "R", "N") or data.speed_kmh > 1
+        is_driving = getattr(data, 'is_driving', data.gear in ('D', 'R', 'N') or data.speed_kmh > 1)
+        # CN T03 has no P: stationary N follows the same confirmation and READY
+        # rules as P. The decoder leaves all other models' N in the driving state.
+        parked_gear = data.gear == "P" or (getattr(data, "market", "EU") == "CN"
+                                          and data.gear == "N" and not is_driving)
         # A charge SESSION opens only on REAL charging current: charging_status = a measured current
         # ≥ 2 A (or 1149==2 on a C10, see _is_charging). NEVER on the cable alone — a car waiting for
         # its programmed window reports 1149==4 with no current (#243), and that must NOT start
@@ -338,7 +342,7 @@ class StateMachine:
                 self._parked_count, self._still_since = 0, None
                 self._alert_start_ts = now
                 events.append(self._go(State.PARKED_ACTIVE, data))
-            elif (data.gear == "P" and data.ready_reported and data.ready
+            elif (parked_gear and data.ready_reported and data.ready
                   and frozen_s < FROZEN_DRIVE_LIMIT_S):
                 # In P with the car still on: a stop inside the drive, not its end. The confirmation
                 # does not run — it starts over when the car is seen off — and the trip stays open
@@ -355,7 +359,7 @@ class StateMachine:
                     self._still_since = None
                     self._alert_start_ts = now
                     events.append(self._go(State.PARKED_ACTIVE, data, stood_still=True))
-            elif data.gear == "P":
+            elif parked_gear:
                 self._parked_count += 1
                 confirmations = max(PARKED_CONFIRM,
                     math.ceil(PARKED_CONFIRM_SECONDS / max(1, self.poll_driving)))

@@ -4379,7 +4379,8 @@ def get_latest_status() -> Optional[dict]:
     except Exception:
         d["last_seen"] = "unknown"
     # The battery at the car's own limit (assumed 100 % if it reports none), and current going into it.
-    car = db.execute("SELECT vin FROM vehicles WHERE id=?", (d["vehicle_id"],)).fetchone()
+    car_fields = "vin, car_type" if d.get("market") == "CN" else "vin"
+    car = db.execute(f"SELECT {car_fields} FROM vehicles WHERE id=?", (d["vehicle_id"],)).fetchone()
     limit = configured_charge_limit(car["vin"] if car else "") or 100
     at_limit = d.get("soc") is not None and d["soc"] >= limit - _AT_THE_LIMIT_PCT
     current_in = (d.get("charge_current_a") or 0) <= -_CHARGE_SAMPLE_MIN_A
@@ -4412,8 +4413,10 @@ def get_latest_status() -> Optional[dict]:
     # fix is seconds old, the position it falls back to may be days old.
     d["position_age_s"] = _position_age_s(fix.get("frame_ts"), fix.get("recorded_at"))
     if d.get("market") == "CN":
+        from cn_telemetry import is_driving
         code = d.get("cn_charge_state")
-        moving = d.get("gear") in ("R", "N", "D") or (d.get("speed_kmh") or 0) > 1
+        moving = is_driving(d.get("gear"), d.get("speed_kmh"), car["car_type"] if car else None)
+        d["vehicle_state"] = "driving" if moving else "parked"
         d["charging"] = int(code == 1 and not moving) if code in (0, 1, 2, 3, 4, 5, 6) else None
         d["plug_connected"] = code in (1, 2, 3, 4, 6) and not moving if code in (0, 1, 2, 3, 4, 5, 6) else None
         d["cable_connected"] = d["plug_connected"]

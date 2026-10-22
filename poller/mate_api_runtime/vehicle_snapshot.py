@@ -103,6 +103,14 @@ class VehicleData:
     windows_open_count: int | None = None
 
     @property
+    def is_driving(self) -> bool:
+        # CN decoding knows the model: a stationary T03 in N is parked. Do not
+        # reinterpret its normalized state from the raw gear in downstream consumers.
+        if self.market == 'CN':
+            return self.vehicle_state == 'driving'
+        return self.gear in ('D', 'R', 'N') or self.speed_kmh > 1
+
+    @property
     def cable_connected(self) -> bool | None:
         if self.market == 'CN':
             # CN 1149 has its own plug states; EU's latched AC-port bit cannot override them.

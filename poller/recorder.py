@@ -123,7 +123,7 @@ class Recorder:
             is_charging = (data.charging_status > 0 or data.charge_state_code == 6
                            or data.charge_state_code not in (0, 1, 2, 3, 4, 5, 6))
             is_charging = is_charging and data.vehicle_state != 'driving'
-        is_driving  = data.gear in ("D", "R", "N") or data.speed_kmh > 1
+        is_driving = data.is_driving
 
         open_charge = self._db.get_open_charge(self._vehicle_id)
         if open_charge:

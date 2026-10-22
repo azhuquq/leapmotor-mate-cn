@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- **CN T03 parking in N no longer starts a phantom trip.** Stationary neutral uses the
+  parked cadence and the usual trip-end confirmation/READY rules, while the gear still reads N.
+  Restart recovery, charging detection, the Overview and MQTT use the same model-specific state;
+  other models retain their existing gear behaviour.
 - **CN T03 mixed telemetry keeps its numbered readings.** Named auxiliary fields no longer erase
   a numbered frame's valid SoC, motion or GPS. Explicit named values take precedence, invalid named
   SoC still rejects the frame, and numbered placeholders in named-SoC frames remain untrusted.
