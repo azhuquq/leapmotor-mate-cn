@@ -254,12 +254,13 @@ def test_cn_market_setup_skips_certificates(api):
     from fastapi.testclient import TestClient
     client = TestClient(web_main.app)
     response = client.get('/setup')
-    assert response.status_code == 200 and '短信登入' in response.text
+    assert response.status_code == 200 and '短信登录' in response.text
     assert 'name="password"' not in response.text
     assert client.get('/api/setup/cert-status').json()['state'] == 'ready'
 
 
-def test_sms_setup_commits_selected_cars_and_restores_without_sms(api, monkeypatch):
+@pytest.mark.parametrize('language', ['zh-CN', 'zh-TW'])
+def test_sms_setup_commits_selected_cars_and_restores_without_sms(api, monkeypatch, language):
     import cn_backend
     import crypto
     import db as poller_db
@@ -304,10 +305,10 @@ def test_sms_setup_commits_selected_cars_and_restores_without_sms(api, monkeypat
         'vehicles_json':json.dumps([{**car,'vin':'UNLISTED'}])},follow_redirects=False)
     assert invalid.status_code == 400 and get_setting('cn_shared_session') == before
     saved = client.post('/setup',data={'login_id':staged['login_id'],'vehicles_json':json.dumps([car]),
-        'timezone':'Asia/Hong_Kong'},follow_redirects=False)
+        'timezone':'Asia/Hong_Kong', 'language':language},follow_redirects=False)
     assert saved.status_code == 303
     assert db_reader.get_setting('setup_complete') == '1'
-    assert db_reader.get_setting('language') == 'zh-TW'
+    assert db_reader.get_setting('language') == language
     assert db_reader.get_setting('currency') == 'CNY'
     assert db_reader.get_setting('timezone') == 'Asia/Hong_Kong'
     assert db_reader.get_secret('leapmotor_pin_' + vehicle().vin.lower()) == '1234'

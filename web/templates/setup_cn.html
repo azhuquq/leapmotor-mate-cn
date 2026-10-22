@@ -1,53 +1,87 @@
 <!DOCTYPE html>
-<html lang="zh-TW" class="h-full">
+<html lang="{{ lang }}" class="h-full">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <base href="{{ request.headers.get('x-ingress-path', '') }}/">
-  <title>LeapMotor Mate 中國區 — 設定</title>
+  <title>LeapMotor Mate {{ t('cn_setup_title') }}</title>
   <script src="static/vendor/tailwind.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen px-4 py-12">
 <main class="max-w-2xl mx-auto space-y-6">
-  <header><img src="static/leapmotor-logo.svg" alt="Leapmotor" class="w-32 mb-6 brightness-0 invert"><h1 class="text-3xl font-semibold">連接你的零跑汽車</h1><p class="text-slate-400 mt-3">中國區帳號 · 本地行程與充電記錄 · 繁體中文</p></header>
+  <header><img src="static/leapmotor-logo.svg" alt="Leapmotor" class="w-32 mb-6 brightness-0 invert"><h1 class="text-3xl font-semibold" data-cn-key="cn_setup_heading">{{ t('cn_setup_heading') }}</h1><p class="text-slate-400 mt-3" data-cn-key="cn_setup_subtitle">{{ t('cn_setup_subtitle') }}</p></header>
+  <label class="block text-sm"><span data-cn-key="setup_language">{{ t('setup_language') }}</span>
+    <select id="language" class="ml-3 bg-slate-800 rounded-lg px-3 py-2 border border-slate-700">
+      <option value="zh-CN" {% if lang == 'zh-CN' %}selected{% endif %}>🇨🇳 {{ t('lang_zh_cn') }}</option>
+      <option value="zh-TW" {% if lang == 'zh-TW' %}selected{% endif %}>🇭🇰 {{ t('lang_zh_tw') }}</option>
+    </select>
+  </label>
   <section class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4">
-    <h2 class="text-lg font-semibold">1. 短信登入</h2>
-    <p class="text-sm text-slate-400">使用專供 Mate 的共享帳號，在官方 App 接受車輛共享後登入。權限由車主授予。</p>
-    <label class="block text-sm" for="phone">中國大陸手機號碼</label>
-    <div class="flex gap-3"><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+86 手機號碼" class="min-w-0 flex-1 bg-slate-800 rounded-lg px-3 py-3 border border-slate-700"><button id="send" type="button" class="bg-teal-600 hover:bg-teal-500 rounded-lg px-4 py-3 whitespace-nowrap">發送驗證碼</button></div>
-    <label class="block text-sm" for="code">短信驗證碼</label>
-    <div class="flex gap-3"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" class="min-w-0 flex-1 bg-slate-800 rounded-lg px-3 py-3 border border-slate-700"><button id="verify" type="button" class="bg-teal-600 hover:bg-teal-500 rounded-lg px-4 py-3">登入</button></div>
+    <h2 class="text-lg font-semibold" data-cn-key="cn_sms_step">{{ t('cn_sms_step') }}</h2>
+    <p class="text-sm text-slate-400" data-cn-key="cn_account_hint">{{ t('cn_account_hint') }}</p>
+    <label class="block text-sm" for="phone" data-cn-key="cn_phone">{{ t('cn_phone') }}</label>
+    <div class="flex gap-3"><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="{{ t('cn_phone_placeholder') }}" class="min-w-0 flex-1 bg-slate-800 rounded-lg px-3 py-3 border border-slate-700"><button id="send" type="button" class="bg-teal-600 hover:bg-teal-500 rounded-lg px-4 py-3 whitespace-nowrap" data-cn-key="cn_sms_send">{{ t('cn_sms_send') }}</button></div>
+    <label class="block text-sm" for="code" data-cn-key="cn_sms_code">{{ t('cn_sms_code') }}</label>
+    <div class="flex gap-3"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" class="min-w-0 flex-1 bg-slate-800 rounded-lg px-3 py-3 border border-slate-700"><button id="verify" type="button" class="bg-teal-600 hover:bg-teal-500 rounded-lg px-4 py-3" data-cn-key="cn_sign_in">{{ t('cn_sign_in') }}</button></div>
     <p id="message" role="status" aria-live="polite" class="text-sm text-teal-300">{{ error or '' }}</p>
   </section>
   <form method="post" action="setup" id="car-form" hidden class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5">
-    <h2 class="text-lg font-semibold">2. 確認車輛設定</h2>
-    <p class="text-sm text-slate-400">電池可用容量用於估算行程能耗，請依車型版本填寫；可稍後在設定中修正。</p>
+    <h2 class="text-lg font-semibold" data-cn-key="cn_vehicle_step">{{ t('cn_vehicle_step') }}</h2>
+    <p class="text-sm text-slate-400" data-cn-key="cn_capacity_hint">{{ t('cn_capacity_hint') }}</p>
+    <input type="hidden" name="language" id="form-language" value="{{ lang }}">
     <input type="hidden" name="login_id" id="login-id"><input type="hidden" name="vehicles_json" id="cars-json">
     <div id="cars" class="space-y-4"></div>
-    <label class="block text-sm">時區<select name="timezone" class="mt-2 w-full bg-slate-800 rounded-lg px-3 py-3"><option value="Asia/Shanghai">中國標準時間（Asia/Shanghai）</option><option value="Asia/Hong_Kong">香港（Asia/Hong_Kong）</option><option value="Asia/Taipei">台北（Asia/Taipei）</option></select></label>
-    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-500 rounded-lg py-3 font-medium">完成設定</button>
+    <label class="block text-sm"><span data-cn-key="cn_timezone">{{ t('cn_timezone') }}</span><select name="timezone" class="mt-2 w-full bg-slate-800 rounded-lg px-3 py-3"><option value="Asia/Shanghai" data-cn-key="cn_timezone_shanghai">{{ t('cn_timezone_shanghai') }}</option><option value="Asia/Hong_Kong" data-cn-key="cn_timezone_hong_kong">{{ t('cn_timezone_hong_kong') }}</option><option value="Asia/Taipei" data-cn-key="cn_timezone_taipei">{{ t('cn_timezone_taipei') }}</option></select></label>
+    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-500 rounded-lg py-3 font-medium" data-cn-key="cn_setup_finish">{{ t('cn_setup_finish') }}</button>
   </form>
-  <button id="demo" type="button" class="text-sm text-slate-400 hover:text-white">先體驗示範資料</button>
-  <p class="text-xs text-slate-500">車況由雲端被動讀取；行程及充電資料保存在你的伺服器。</p>
+  <button id="demo" type="button" class="text-sm text-slate-400 hover:text-white" data-cn-key="cn_demo">{{ t('cn_demo') }}</button>
+  <p class="text-xs text-slate-500" data-cn-key="cn_storage_hint">{{ t('cn_storage_hint') }}</p>
 </main>
 <script>
 const byId = id => document.getElementById(id)
+const texts = {{ cn_setup_texts|tojson }}
+let language = {{ lang|tojson }}
 let cars = []
+let retryRemaining = 0
+let messageKey = null
+let messageArgs = {}
+function tr(key, args = {}) {
+  let text = texts[language][key]
+  for (const [name, value] of Object.entries(args)) text = text.replaceAll('{' + name + '}', String(value))
+  return text
+}
+function say(message) {messageKey = null; byId('message').textContent = message}
+function sayKey(key, args = {}) {messageKey = key; messageArgs = args; byId('message').textContent = tr(key, args)}
+function setLanguage(value) {
+  language = texts[value] ? value : 'zh-CN'
+  document.documentElement.lang = language
+  document.title = 'LeapMotor Mate ' + tr('cn_setup_title')
+  byId('form-language').value = language
+  for (const element of document.querySelectorAll('[data-cn-key]')) element.textContent = tr(element.dataset.cnKey)
+  byId('phone').placeholder = tr('cn_phone_placeholder')
+  for (const title of document.querySelectorAll('[data-car-index]')) {
+    const car = cars[Number(title.dataset.carIndex)]
+    title.textContent = `${car.car_type} ${car.year || ''} · ${tr(car.is_shared ? 'cn_shared_vehicle' : 'cn_owned_vehicle')} · ${car.vin.slice(-6)}`
+  }
+  if (retryRemaining > 0) byId('send').textContent = tr('cn_sms_retry', {n:retryRemaining})
+  if (messageKey) byId('message').textContent = tr(messageKey, messageArgs)
+}
+byId('language').onchange = event => setLanguage(event.target.value)
 async function api(path, body) {
-  const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+  const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, language})})
   const data = await response.json()
-  if (!response.ok) throw new Error(data.error || '請求失敗，請稍後再試')
+  if (!response.ok) throw new Error(data.error || tr('cn_request_failed'))
   return data
 }
-function say(message) { byId('message').textContent = message }
 byId('send').onclick = async () => {
   byId('send').disabled = true
   try {
     await api('api/setup/sms/send', {phone:byId('phone').value})
-    say('驗證碼已發送，請查看短信。')
-    let remaining = 60
+    sayKey('cn_sms_sent')
+    retryRemaining = 60
+    byId('send').textContent = tr('cn_sms_retry', {n:retryRemaining})
     const timer = setInterval(() => {
-      byId('send').textContent = `${--remaining} 秒後重發`
-      if (remaining <= 0) {clearInterval(timer); byId('send').disabled = false; byId('send').textContent = '發送驗證碼'}
+      byId('send').textContent = tr('cn_sms_retry', {n:--retryRemaining})
+      if (retryRemaining <= 0) {clearInterval(timer); byId('send').disabled = false; byId('send').textContent = tr('cn_sms_send')}
     }, 1000)
   } catch (error) {say(error.message); byId('send').disabled = false}
 }
@@ -63,13 +97,12 @@ byId('verify').onclick = async () => {
       const section = document.createElement('section')
       section.className = 'border border-slate-700 rounded-xl p-4 space-y-3'
       const title = document.createElement('h3')
-      title.className = 'font-medium'
-      title.textContent = `${car.car_type} ${car.year || ''} · ${car.is_shared ? '共享車輛' : '自有車輛'} · ${car.vin.slice(-6)}`
+      title.className = 'font-medium'; title.dataset.carIndex = index
       section.append(title)
-      const labels = [['battery', '電池可用容量（kWh）', 'number'], ['pin', '操作 PIN（選填，遠端控制需要）', 'password']]
-      for (const [key, text, type] of labels) {
+      const labels = [['battery', 'cn_capacity', 'number'], ['pin', 'cn_pin_optional', 'password']]
+      for (const [key, textKey, type] of labels) {
         const label = document.createElement('label'); label.className = 'block text-sm'
-        label.textContent = text
+        const text = document.createElement('span'); text.dataset.cnKey = textKey; label.append(text)
         const input = document.createElement('input'); input.id = `${key}-${index}`; input.type = type
         input.className = 'block w-full mt-2 bg-slate-800 rounded-lg px-3 py-2 border border-slate-700'
         if (key === 'battery') {input.required=true; input.min='1'; input.max='250'; input.step='0.1'}
@@ -78,11 +111,13 @@ byId('verify').onclick = async () => {
       }
       const variant = document.createElement('label'); variant.className = 'block text-sm'
       const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.id=`reev-${index}`
-      variant.append(checkbox, ' 增程車型'); section.append(variant)
+      const variantText = document.createElement('span'); variantText.dataset.cnKey = 'cn_reev'
+      variant.append(checkbox, ' ', variantText); section.append(variant)
       byId('cars').append(section)
     }
+    setLanguage(language)
     byId('car-form').hidden = false
-    say(`登入成功，找到 ${cars.length} 台車輛。`)
+    sayKey('cn_login_found', {n:cars.length})
   } catch (error) {say(error.message)}
   finally {byId('verify').disabled=false}
 }

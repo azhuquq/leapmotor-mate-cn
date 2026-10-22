@@ -451,10 +451,10 @@
   {# Keep these controls inside #cmd-grid so its outerHTML refresh replaces them too. #}
   {% if china_market() and healthy_charging_shown %}
   <div class="card">
-    <h3 class="text-sm font-medium text-slate-300 mb-3">健康充電</h3>
+    <h3 class="text-sm font-medium text-slate-300 mb-3">{{ t('cn_healthy_charge') }}</h3>
     <div class="grid grid-cols-2 gap-3">
-      {{ action_tile('healthy_charging_on', '<span aria-hidden="true">⚡</span>', '開啟健康充電', '開啟') }}
-      {{ action_tile('healthy_charging_off', '<span aria-hidden="true">⚡</span>', '關閉健康充電', '關閉') }}
+      {{ action_tile('healthy_charging_on', '<span aria-hidden="true">⚡</span>', t('cn_healthy_charge_on'), t('cn_enable')) }}
+      {{ action_tile('healthy_charging_off', '<span aria-hidden="true">⚡</span>', t('cn_healthy_charge_off'), t('cn_disable')) }}
     </div>
   </div>
   {% endif %}

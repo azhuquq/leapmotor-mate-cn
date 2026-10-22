@@ -9,22 +9,22 @@
 {% block content %}
 {% if china_market() %}
 <section class="card mb-6">
-  <div class="flex justify-between items-center gap-3"><h2 class="font-semibold">官方每日行駛能耗</h2><button type="button" id="cn-energy-reload" class="text-sm text-brand">讀取／重新整理</button></div>
-  <p class="text-sm text-slate-400 mt-2">最近七天的驅動、空調及其他行駛能耗；未取得資料顯示「—」，與本地充電記錄分開計算。</p>
-  <div id="cn-daily-energy" class="mt-3 text-sm text-slate-400" role="status">點擊讀取官方資料。</div>
+  <div class="flex justify-between items-center gap-3"><h2 class="font-semibold">{{ t('cn_energy_title') }}</h2><button type="button" id="cn-energy-reload" class="text-sm text-brand">{{ t('cn_energy_reload') }}</button></div>
+  <p class="text-sm text-slate-400 mt-2">{{ t('cn_energy_hint') }}</p>
+  <div id="cn-daily-energy" class="mt-3 text-sm text-slate-400" role="status">{{ t('cn_energy_idle') }}</div>
 </section>
 <script>
 document.getElementById('cn-energy-reload').onclick = async function () {
   const target = document.getElementById('cn-daily-energy')
   this.disabled = true
-  target.textContent = '正在讀取官方資料…'
+  target.textContent = {{ t('cn_energy_loading')|tojson }}
   try {
     const response = await fetch('api/cn/energy/daily')
     const result = await response.json()
-    if (!response.ok) throw new Error(result.error || '暫時無法讀取')
+    if (!response.ok) throw new Error(result.error || {{ t('cn_energy_unavailable')|tojson }})
     const table = document.createElement('table'); table.className='w-full text-right'
     const header = document.createElement('tr')
-    for (const title of ['日期','驅動','空調','其他','合計（kWh）']) {const cell=document.createElement('th'); cell.textContent=title; cell.className='py-2'; header.append(cell)}
+    for (const title of [{{ t('cn_energy_date')|tojson }},{{ t('cn_energy_driving')|tojson }},{{ t('cn_energy_climate')|tojson }},{{ t('cn_energy_other')|tojson }},{{ t('cn_energy_total')|tojson }}]) {const cell=document.createElement('th'); cell.textContent=title; cell.className='py-2'; header.append(cell)}
     table.append(header)
     for (const day of result.days) {
       const row=document.createElement('tr')

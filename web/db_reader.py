@@ -1605,7 +1605,7 @@ _lang_memo: list = [None]
 
 def get_language() -> str:
     if _lang_memo[0] is None:
-        _lang_memo[0] = get_setting("language", "zh-TW" if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else "en")
+        _lang_memo[0] = get_setting("language", "zh-CN" if os.environ.get("MATE_MARKET", "CN").upper() == "CN" else "en")
     return _lang_memo[0]
 
 

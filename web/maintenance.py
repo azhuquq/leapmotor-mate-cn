@@ -226,7 +226,7 @@ def set_baseline(date_iso: str, km: Optional[float]) -> None:
 # ── Formatting helpers (distance respects the user's unit system) ─────────────
 def _grp(n, lang: str) -> str:
     s = f"{int(round(n)):,}"
-    return s.replace(",", ".") if lang not in ("en", "zh-TW") else s
+    return s.replace(",", ".") if lang not in ("en", "zh-TW", "zh-CN") else s
 
 
 def _dist(km, lang: str, system: str) -> str:
@@ -507,5 +507,88 @@ _P["zh-TW"] = {'first': '首次保養尚餘 ',
  'y1': '1 年',
  'moN': '{n} 個月',
  'mo1': '1 個月',
+ 'dN': '{n} 天',
+ 'd1': '1 天'}
+
+
+# Simplified Chinese service labels (literal data; no conversion dependency at runtime).
+
+for _zh_key, _zh_text in {'brake_fluid_replace': '制动油 — 更换',
+ 'brake_fluid_inspect': '制动油液位 — 检查',
+ 'brake_pads_inspect': '制动皮 — 检查',
+ 'brake_discs_inspect': '制动碟 — 检查',
+ 'brake_hoses_inspect': '制动软管与管路 — 检查',
+ 'cabin_filter_replace': '空调滤芯 — 更换',
+ 'coolant_replace': '冷却液 — 更换',
+ 'coolant_inspect': '冷却液液位 — 检查',
+ 'reducer_oil_replace': '减速器润滑油 — 更换',
+ 'reducer_filter_replace': '减速器滤芯 — 更换',
+ 'tire_replace': '轮胎 — 更换',
+ 'tire_rotation': '轮胎换位',
+ 'tire_inspect': '轮胎 — 胎压与胎纹检查',
+ 'wiper_blades_replace': '雨刷片 — 更换',
+ 'wiper_blades_inspect': '雨刷片 — 检查',
+ 'driveshaft_boot_inspect': '转向与传动轴防尘套 — 检查',
+ 'battery_pack_inspect': '高压电池组 — 检查',
+ 'drive_motor_inspect': '驱动电机与减速器 — 检查',
+ 'hvac_system_check': '空调系统 — 检查',
+ 'charging_port_inspect': '充电接口 — 检查',
+ 'lights_horn_check': '车灯、喇叭与雨刷 — 检查',
+ 'software_update_check': '控制软件 — 检查'}.items():
+    _LABELS[_zh_key]["zh-CN"] = _zh_text
+
+for _zh_key, _zh_text in {'brakes': '制动',
+ 'tires': '轮胎',
+ 'drivetrain': '传动系统',
+ 'climate': '空调',
+ 'cooling': '冷却系统',
+ 'battery': '电池',
+ 'electrical': '电气系统',
+ 'exterior': '车身外部'}.items():
+    _CATS[_zh_key]["zh-CN"] = _zh_text
+
+for _zh_key, _zh_text in {'title': '保养',
+ 'subtitle': '依车辆原厂手册安排保养',
+ 'odometer': '总里程',
+ 'overdue': '已逾期',
+ 'soon': '即将到期',
+ 'ok': '尚未到期',
+ 'log_btn': '记录',
+ 'log_done': '记录此项保养已完成',
+ 'date': '日期',
+ 'note': '备注（选填）',
+ 'save': '保存',
+ 'cancel': '取消',
+ 'last': '上次保养',
+ 'never': '尚无记录',
+ 'from_delivery': '自交车起',
+ 'interval': '保养周期',
+ 'no_pack_title': '尚未收录此车型的原厂保养周期',
+ 'no_pack_body': '请依你的中国区车辆保养手册安排保养。',
+ 'provisional': '暂定周期，请以此车型的原厂手册确认。',
+ 'baseline_q': '车辆何时交付？',
+ 'baseline_hint': '设置领牌或交车日期，以准确计算首次保养期限。',
+ 'baseline_save': '保存交车数据',
+ 'baseline_set': '已设置交车数据',
+ 'baseline_edit': '修改交车数据',
+ 'baseline_km': '交车时的里程',
+ 'baseline_km_hint': '填写交车时的里程；若为新车，可填 0。',
+ 'all_good': '目前无到期保养项目',
+ 'next_first': '首次保养',
+ 'st_overdue': '已逾期',
+ 'st_soon': '即将到期',
+ 'st_ok': '尚未到期',
+ 'bar_time': '时间'}.items():
+    _CHROME[_zh_key]["zh-CN"] = _zh_text
+
+_P["zh-CN"] = {'first': '首次保养尚余 ',
+ 'in_': '尚余 ',
+ 'overdue': '已超过 ',
+ 'every': '每 ',
+ 'or': ' 或 ',
+ 'yN': '{n} 年',
+ 'y1': '1 年',
+ 'moN': '{n} 个月',
+ 'mo1': '1 个月',
  'dN': '{n} 天',
  'd1': '1 天'}

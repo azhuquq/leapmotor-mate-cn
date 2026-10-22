@@ -420,6 +420,9 @@ class LeapmotorSession:
                 said = str(exc)
                 reason = said if said.startswith("Command not sent: ") else type(exc).__name__
                 log.warning("API v2 command failed or was blocked (%s); no automatic retry", reason)
+                if getattr(self._api, '_mate_cn_api', False):
+                    from cn_language import localize_error
+                    said = localize_error(said)
                 return False, said
 
     _STATUS_PATH_FALLBACK = "c10"

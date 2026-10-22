@@ -91,7 +91,8 @@
             <select name="language"
                     class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white
                            text-sm focus:outline-none focus:border-brand cursor-pointer">
-              <option value="zh-TW" {% if lang == "zh-TW" %}selected{% endif %}>繁體中文</option>
+              <option value="zh-CN" {% if lang == "zh-CN" %}selected{% endif %}>🇨🇳 {{ t('lang_zh_cn') }}</option>
+              <option value="zh-TW" {% if lang == "zh-TW" %}selected{% endif %}>🇭🇰 {{ t('lang_zh_tw') }}</option>
               <option value="en" {% if lang == 'en' %}selected{% endif %}>🇬🇧 {{ t('lang_en') }}</option>
               <option value="it" {% if lang == 'it' %}selected{% endif %}>🇮🇹 {{ t('lang_it') }}</option>
               <option value="fr" {% if lang == 'fr' %}selected{% endif %}>🇫🇷 {{ t('lang_fr') }}</option>

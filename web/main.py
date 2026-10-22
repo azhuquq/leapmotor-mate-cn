@@ -280,7 +280,7 @@ def _money(x) -> str:
     # to whole units would ROUND the figure on screen, and Mate shows full precision, never a rounded
     # number (Silvio's rule). `dec` stays the true ISO minor-unit count; this is only the display floor.
     s = f"{float(x):,.{max(cur['dec'], 2)}f}"
-    if db_reader.get_language() not in ("en", "zh-TW"):
+    if db_reader.get_language() not in ("en", "zh-TW", "zh-CN"):
         # swap separators: 1,234.50 -> 1.234,50
         s = s.translate(str.maketrans({",": ".", ".": ","}))
     sym = cur["symbol"]
@@ -299,7 +299,7 @@ def _price_3(x) -> str:
     if x is None:
         return "\u2014"
     s = f"{float(x):,.3f}"
-    if db_reader.get_language() not in ("en", "zh-TW"):
+    if db_reader.get_language() not in ("en", "zh-TW", "zh-CN"):
         s = s.translate(str.maketrans({",": ".", ".": ","}))
     return s
 
@@ -4764,7 +4764,7 @@ async def set_language(request: Request):
     (HX-Refresh) so every server-rendered string switches to the new language."""
     form = await request.form()
     lang = form.get("language", "en")
-    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW") else "en")
+    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW", "zh-CN") else "en")
     return Response(status_code=204, headers={"HX-Refresh": "true"})
 
 
@@ -6648,7 +6648,8 @@ async def setup_page(request: Request):
     # The international wizard renders every pack provided by the server, including REEV.
     from api_backend import is_china
     if is_china():
-        return templates.TemplateResponse(request, "setup_cn.html", {"error": ""})
+        from cn_language import setup_context
+        return templates.TemplateResponse(request, "setup_cn.html", setup_context(request.query_params.get('language')))
     return templates.TemplateResponse(request, "setup.html", {
         "battery_options": battery_options_for_build(),
         # Asked here, pre-filled with what Mate detected — see the note in setup_submit. The full
@@ -6722,7 +6723,8 @@ async def cn_sms_send(request: Request):
         await asyncio.to_thread(api.send_sms, body.get("phone", ""))
         return JSONResponse({"ok": True, "retry_in": 60})
     except ChinaError as error:
-        return JSONResponse({"error": str(error), "code": error.code}, status_code=400)
+        from cn_language import language, localize_error
+        return JSONResponse({"error": localize_error(error, language(body.get('language'))), "code": error.code}, status_code=400)
 
 
 @app.post("/api/setup/sms/verify")
@@ -6736,7 +6738,8 @@ async def cn_sms_verify(request: Request):
         return JSONResponse({"login_id": login_id, "vehicles": [{"vin": car.vin, "car_type": car.car_type,
             "year": car.year, "is_shared": car.is_shared} for car in cars]})
     except ChinaError as error:
-        return JSONResponse({"error": str(error), "code": error.code}, status_code=400)
+        from cn_language import language, localize_error
+        return JSONResponse({"error": localize_error(error, language(body.get('language'))), "code": error.code}, status_code=400)
 
 
 async def cn_setup_submit(request: Request):
@@ -6744,6 +6747,8 @@ async def cn_setup_submit(request: Request):
     from cn_backend import ChinaAPIClient, ChinaError, get_setting
     import crypto
     form = await request.form()
+    from cn_language import language, setup_context
+    lang = language(form.get('language'))
     login_id = str(form.get("login_id", ""))
     try:
         staged = json.loads(crypto.decrypt(get_setting("cn_pending_" + login_id)))
@@ -6761,7 +6766,7 @@ async def cn_setup_submit(request: Request):
         apply_setup_vehicles(cars)
         db_reader.set_setting("battery_capacity_kwh", str(float(cars[0]["battery"])))
         db_reader.set_setting("is_reev", "1" if cars[0].get("is_reev") else "0")
-        db_reader.set_setting("language", "zh-TW")
+        db_reader.set_setting("language", lang)
         db_reader.set_currency("CNY")
         db_reader.set_timezone(str(form.get("timezone") or "Asia/Shanghai"))
         db_reader.set_setting(db_reader.TZ_PINNED_KEY, "1")
@@ -6770,7 +6775,8 @@ async def cn_setup_submit(request: Request):
         command_client._session._reset()
         return RedirectResponse(request.headers.get("x-ingress-path", "") + "/", status_code=303)
     except (ChinaError, ValueError, KeyError, TypeError) as error:
-        return templates.TemplateResponse(request, "setup_cn.html", {"error": str(error) if isinstance(error, ChinaError) else "車輛設定或登入流程無效，請重新確認"}, status_code=400)
+        message = str(error) if isinstance(error, ChinaError) else i18n.get_t(lang)('cn_setup_invalid')
+        return templates.TemplateResponse(request, "setup_cn.html", setup_context(lang, message), status_code=400)
 
 
 @app.get("/api/cn/energy/daily")
@@ -6784,7 +6790,8 @@ async def cn_daily_energy(start: str = "", end: str = ""):
         rows = await asyncio.to_thread(command_client.get_daily_energy, start or (today - timedelta(days=6)).isoformat(), end or today.isoformat())
         return JSONResponse({"days": rows, "source": "official_daily_driving"})
     except (ChinaError, ValueError) as error:
-        return JSONResponse({"error": str(error) if isinstance(error, ChinaError) else "日期格式無效"}, status_code=400)
+        from cn_language import localize_error
+        return JSONResponse({"error": localize_error(error) if isinstance(error, ChinaError) else i18n.get_t(db_reader.get_language())('cn_invalid_date')}, status_code=400)
 
 
 @app.get("/api/setup/cert-status")
@@ -6905,7 +6912,7 @@ async def setup_submit(request: Request):
     db_reader.set_secret("leapmotor_pin", pin)
     db_reader.set_setting("battery_capacity_kwh", str(battery_kwh))
     db_reader.set_setting("is_reev", is_reev)   # REEV variant selected in the wizard → gates fuel features
-    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW") else "en")
+    db_reader.set_setting("language", lang if lang in ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW", "zh-CN") else "en")
     # set_timezone validates against the tz database and falls back to Auto on anything unknown, so
     # a tampered field cannot wedge every date render. Marked as pinned either way, so the startup
     # migration never comes back and overwrites a fresh answer with the container's clock.
