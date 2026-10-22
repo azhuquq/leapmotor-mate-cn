@@ -1,21 +1,21 @@
 # LeapMotor Mate 中國區
 
-中國市場零跑帳號與車輛的本地行程記錄、充電統計及遠端控制版本。基於 Mate 4.15.3，參照 `ha-leapmotor-cn` 與 `leapmotor-app2api`；首個驗收目標是 **B01 2025、全權限共享帳號**。
+中國市場零跑帳號與車輛的本地行程記錄、充電統計及遠端控制版本。基於 [LeapMotor Mate](https://github.com/ProtossBlaster/leapmotor-mate)，參照 [ha-leapmotor-cn](https://github.com/MiRaToo/ha-leapmotor-cn) 及其他相關專案。
 
 ## 快速啟動
 
-需要 Docker 與 Docker Compose v2：
+需要 Docker 與 Docker Compose：
 
 ```sh
 cd ~/Develop/leapmotor-mate-cn
 docker compose up -d --build
 ```
 
-開啟 http://localhost:4000 ，以中國大陸手機短信驗證碼登入。先在官方 App 接受共享，再為每台車填寫電池可用容量及選填的操作 PIN。預設繁體中文、人民幣及中國標準時間，不需要國際版憑證或帳號密碼。
+開啟 http://localhost:4000 ，以中國大陸手機短信驗證碼登入。先在官方 App 接受共享，再為每台車填寫電池可用容量及選填的操作 PIN。預設簡體中文、人民幣及中國標準時間，不需要國際版憑證或帳號密碼。
 
 登入與續期、被動車況、每 VIN 路由、共享權限、本地記錄、MQTT 與既有中國區控制已接入。雲端受理不會直接顯示成車輛執行成功。
 
-**本次僅完成離線與合成資料驗證，尚未完成 B01 真車控車驗收。** 原生空調排程、prepare-car、導航下發、充電槍解鎖、直接充電啟停與官方逐筆歷史匯入尚未支援。
+原生空調排程、prepare-car、導航下發、充電槍解鎖、直接充電啟停與官方逐筆歷史匯入尚未支援。
 
 完整的[設定、支援表與驗證方式](docs/CHINA-MARKET.md)。持久資料在 `./data`，備份時請連同 `secret.key` 保存。
 
