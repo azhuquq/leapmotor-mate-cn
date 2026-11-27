@@ -28,8 +28,8 @@ import pytest
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 LOCALES = WEB / "locales"
-LANGS = ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "zh-TW", "zh-CN")
-# China has a separate SMS wizard, rather than the international email/certificate flow.
+LANGS = ("en", "it", "fr", "de", "pl", "pt-PT", "nl", "es", "cs", "hr", "zh-TW", "zh-CN")
+# China uses a separate SMS wizard.
 WIZARD_LANGS = tuple(lang for lang in LANGS if lang not in ("zh-TW", "zh-CN"))
 
 

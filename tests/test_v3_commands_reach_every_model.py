@@ -173,7 +173,7 @@ class TestTheRefusalTravelsFromTheCloudToThePage:
         session = command_client._session
         monkeypatch.setattr(session, '_connect', lambda: None)
         monkeypatch.setattr(session, '_target', lambda: SimpleNamespace(vin=VIN))
-        monkeypatch.setattr(session, '_use_pin_of', lambda vin: None)
+        monkeypatch.setattr(session, '_use_pin_of', lambda vin: True)
         session._api = SimpleNamespace(last_new_command_receipt=None)
 
         def refused(api, vin):

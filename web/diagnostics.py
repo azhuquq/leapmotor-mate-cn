@@ -106,6 +106,15 @@ def _journal_line(mode) -> str:
             "(a network share usually cannot).")
 
 
+def _car_value(read, default):
+    """A per-car figure for the bundle, or `default` when it is unset or cannot be read."""
+    try:
+        value = read()
+    except Exception:  # noqa: BLE001 — a bundle is taken when things are broken
+        return default
+    return default if value is None else value
+
+
 def build_system_info(version: str) -> dict:
     """Cheap (no live cloud call) support snapshot for the card + the bundle header."""
     vehicle, settings = db_reader.get_vehicle()
@@ -158,12 +167,14 @@ def build_system_info(version: str) -> dict:
         "year": (vehicle or {}).get("year") or "—",
         "vin_masked": mask_vin((vehicle or {}).get("vin")),
         "journal_mode": db_reader.journal_mode(),
-        "battery_kwh": settings.get("battery_capacity_kwh", "—"),
+        # The selected car's own values, the ones its pages compute with (#472: the install-wide
+        # settings are only the first car's fallback).
+        "battery_kwh": _car_value(db_reader.get_battery_capacity_kwh, "—"),
         # The SoH denominator, snapshotted the first time the capacity is saved. Without it a
         # bundle cannot answer "why is my battery health above 100%" — the number that decides it
         # was simply not in the file (@danielvilhena, #221). Absent means never snapshotted, in
         # which case the health page falls back to the capacity above.
-        "battery_nominal_kwh": settings.get("battery_capacity_nominal_kwh", "— (not set)"),
+        "battery_nominal_kwh": _car_value(db_reader.get_soh_reference_kwh, "— (not set)"),
         "language": settings.get("language", "en"),
         "db_size_mb": round(db_reader.get_db_size_bytes() / 1048576, 1),
         "counts": {"trips": _count("trips"), "charges": _count("charges"),
@@ -253,7 +264,7 @@ def read_full_log(which: str) -> str:
 _BUNDLE_PARTS = ("info", "poller", "web", "signals")   # user-selectable sections
 
 
-def _gps_shape_line(signals: dict) -> str:
+def _gps_shape_line(signals: dict, vin: str | None = None) -> str:
     """Which coordinate signals the car sends, and the hemisphere sign — no coordinates.
 
     Stripping all six GPS ids protects the user's address, but it also blinded triage on the one
@@ -282,11 +293,11 @@ def _gps_shape_line(signals: dict) -> str:
     shapes = ", ".join(f"{i}:{_shape(signals.get(i))}"
                        for i in sorted(_GPS_SIGNAL_IDS, key=int)
                        if signals.get(i) not in (None, ""))
+    signs = db_reader.remembered_signs(vin)
     return (f"signals present : {shapes or 'none'} "
             f"(2/3 = signed · 3724/3725 + 2190/2191 = unsigned magnitudes · "
             f"zero = arrives but says nothing)\n"
-            f"remembered sign : lat={db_reader.get_setting('gps_lat_sign') or 'unknown'} "
-            f"lon={db_reader.get_setting('gps_lon_sign') or 'unknown'} "
+            f"remembered sign : lat={signs['lat']} lon={signs['lon']} "
             f"(learned from a signed poll; unknown = never seen one)")
 
 
@@ -299,6 +310,29 @@ def _signals_section(signals: dict | None, vin: str | None) -> str:
     clean = {k: v for k, v in signals.items()
              if k not in _GPS_SIGNAL_IDS and str(k).lower() not in _GPS_SIGNAL_NAMES}
     return _redact(json.dumps(clean, indent=2, sort_keys=True), vin)
+
+
+def _offset(seconds: float) -> str:
+    sign, s = ("-" if seconds < 0 else "+"), int(abs(seconds))
+    return f"UTC{sign}{s // 3600:02d}:{s % 3600 // 60:02d}"
+
+
+def _timezone_line() -> str:
+    """Which clock each time in the bundle is on: the tables are UTC, the logs the process's local
+    clock, and the pages the zone in Settings. Two of the three can differ (#181)."""
+    now = time.localtime()
+    # the clock the log lines are stamped with, not $TZ: a default TZ set later need not move it
+    log_name, log_off = time.strftime("%Z", now), _offset(now.tm_gmtoff)
+    try:
+        tz = db_reader._local_tz()
+        setting = db_reader.get_setting("timezone", "").strip() or "Automatic"
+    except Exception:  # noqa: BLE001
+        return f"Timezone     : shown in ? · log clock {log_name} ({log_off} now) · database UTC"
+    # no zone resolved: the pages show the process's local clock, the one the logs use
+    name, off = ((getattr(tz, "key", str(tz)), _offset(datetime.now(tz).utcoffset().total_seconds()))
+                 if tz else (log_name, log_off))
+    return (f"Timezone     : shown in {name} ({off} now, Settings: {setting}) · "
+            f"log clock {log_name} ({log_off} now) · database UTC")
 
 
 def _temperature_line() -> str:
@@ -594,6 +628,57 @@ def _charges_section() -> str:
     return "\n".join(out)
 
 
+_CURVES_PER_KIND = 10    # the charges list's floor: each charge it always shows has its readings here
+
+
+def _charge_curves_section() -> str:
+    """The readings behind the charge chart, for the last charges of each kind, newest first.
+
+    The same reader as the chart (`get_charge_power_curve`), so the bundle shows what the page
+    draws: the gaps, the power, the battery warming. AC and DC are counted apart, or the nightly
+    home charges would push the one road-trip charge out. No place beyond its kind (HOME/FAST…).
+    """
+    try:
+        db = db_reader._get()
+        merged = db_reader._charges_have_merge(db)
+        rows = db.execute(
+            "SELECT * FROM charges WHERE vehicle_id = COALESCE(?, vehicle_id)"
+            + (" AND merged_into_id IS NULL" if merged else "") + " ORDER BY started_at DESC",
+            (db_reader._current_vehicle_id(),)).fetchall()
+        kids = db_reader._charge_children_by_parent(db)
+    except sqlite3.Error as e:
+        return f"(charge readings unavailable: {e})"
+    picked: dict = {"AC": [], "DC": []}
+    for r in rows:
+        # the kind the Charges page gives the whole session, not its first piece's recorded type
+        session = db_reader._charge_group_stats(dict(r), kids.get(r["id"], []))
+        dc = (db_reader.open_charge_is_dc(session["max_power_kw"]) if r["ended_at"] is None
+              else db_reader.charge_is_dc(session))
+        kind = "DC" if dc else "AC"
+        if len(picked[kind]) < _CURVES_PER_KIND:
+            picked[kind].append(r)
+        if all(len(v) == _CURVES_PER_KIND for v in picked.values()):
+            break
+    out = [f"the last {_CURVES_PER_KIND} AC and {_CURVES_PER_KIND} DC charges, newest first, "
+           "as their charts draw them · time UTC · SoC % · kW · battery °C (coldest cell) · "
+           "outside °C · minutes left · a merged charge is its whole session"]
+    for kind, rows in picked.items():
+        for r in rows:
+            c = db_reader.get_charge_power_curve(r["id"])
+            start, end, _ = db_reader._charge_group_span(db, r["id"], r["started_at"], r["ended_at"])
+            out.append(f"  #{r['id']} {kind}/{r['location_type'] or '-'} {(start or '')[:16]} → "
+                       f"{(end or 'in progress')[:16]} · {len(c['times'])} readings")
+            day = None
+            for t, soc, kw, bat, air, left in zip(c["times"], c["soc"], c["power"], c["battery_temp"],
+                                                  c["outside_temp"], c["remaining_min"]):
+                if t[:10] != day:
+                    day = t[:10]
+                    out.append(f"    {day}")
+                out.append(f"    {t[11:19]} {_n(soc, 1)} {_n(kw)} {_n(bat, 0)} {_n(air, 1)} "
+                           f"{'—' if left is None else left}")
+    return "\n".join(out) if len(out) > 1 else "(no charges)"
+
+
 def _trips_section() -> str:
     """Every trip Mate recorded in the window, as it sits in the table.
 
@@ -794,7 +879,8 @@ def _account_rights(vehicle, settings) -> list[str]:
     """What the ACCOUNT may do with this car, as the cloud's vehicle list last gave it (#400). A
     command needs the account's right beside the car's ability, and an account the car is shared
     with can hold fewer; with the abilities alone a refused command could not be told from a right
-    the account lacks. Parsed by the client's own reader; the account's hash stays out."""
+    the account lacks. Parsed by the client's own reader; the account's hash stays out.
+    The entry's `funcConfig` (the fan's and the temperature's range for remote climate) follows as sent."""
     try:
         from ui_command_access import snapshot_key
         from leapmotor_cloud.mate_compat import Vehicle
@@ -807,7 +893,8 @@ def _account_rights(vehicle, settings) -> list[str]:
         return [f"rights : (unreadable access snapshot: {type(exc).__name__})"]
     return [f"rights : {','.join(map(str, sorted(car.rights))) or '(none)'}",
             f"modules: {','.join(map(str, sorted(car.module_rights))) or '(none)'}",
-            f"shared : {'yes' if car.is_shared else 'no'}"]
+            f"shared : {'yes' if car.is_shared else 'no'}",
+            f"funcConfig: {json.dumps(snapshot['vehicle'].get('funcConfig'))}"]
 
 
 def _declared_abilities(vehicle) -> str:
@@ -967,11 +1054,14 @@ def _cloud_history_section() -> str:
     ])
 
 
-def build_bundle(version: str, parts=_BUNDLE_PARTS, lines: int = 300, signals: dict | None = None) -> str:
+def build_bundle(version: str, parts=_BUNDLE_PARTS, lines: int = 300, signals: dict | None = None,
+                 vin: str | None = None) -> str:
     """One redacted text blob to attach to an issue. `parts` selects which sections to include
     (any of 'info', 'poller', 'web', 'signals'); a one-line version header is always present. The
     'signals' section dumps the car's raw signals with GPS coordinates stripped (caller passes a
-    freshly-fetched signal dict) so the whole bundle stays safe to share publicly."""
+    freshly-fetched signal dict and `vin`, the car it read them from, so the picker moving during
+    the fetch cannot pair one car's signals with another's sign) so the whole bundle stays safe to
+    share publicly."""
     want = {p for p in parts if p in _BUNDLE_PARTS} or set(_BUNDLE_PARTS)
     out = [f"===== LeapMotor Mate {version} — diagnostics ====="]
 
@@ -983,6 +1073,7 @@ def build_bundle(version: str, parts=_BUNDLE_PARTS, lines: int = 300, signals: d
             f"VIN          : {info['vin_masked']}",
             f"Battery kWh  : {info['battery_kwh']}  (SoH reference: {info['battery_nominal_kwh']})",
             f"Language     : {info['language']}",
+            _timezone_line(),
             # Mate's own client, the only one since 01/10/2026 (#327 and #338 lived on the other).
             "Cloud client : independent (mate-api)",
             # The last sign-in the cloud did not grant, as the bridge recorded it: the stage it failed
@@ -1030,6 +1121,7 @@ def build_bundle(version: str, parts=_BUNDLE_PARTS, lines: int = 300, signals: d
         # The rows themselves, so a "this charge/trip is wrong" report is answered from the table
         # instead of inferred from 30 000 log lines (#230, 06/08/26).
         out += ["", "----- charges (from the database) -----", _charges_section()]
+        out += ["", "----- charge readings (the latest charge charts) -----", _charge_curves_section()]
         out += ["", "----- trips (from the database) -----", _trips_section()]
         out += ["", "----- charges the car took, and what Mate had in hand -----",
                 _missed_charges_section()]
@@ -1043,10 +1135,9 @@ def build_bundle(version: str, parts=_BUNDLE_PARTS, lines: int = 300, signals: d
     if "web" in want:
         out += ["", "----- web log (full retained window) -----", read_full_log("web")]
     if "signals" in want:
-        vehicle, _ = db_reader.get_vehicle()
+        vin = vin or ((db_reader.get_vehicle()[0] or {}).get("vin"))
         if signals:
-            out += ["", "----- GPS shape (no coordinates) -----", _gps_shape_line(signals)]
-        out += ["", "----- raw signals (GPS removed) -----",
-                _signals_section(signals, (vehicle or {}).get("vin"))]
+            out += ["", "----- GPS shape (no coordinates) -----", _gps_shape_line(signals, vin)]
+        out += ["", "----- raw signals (GPS removed) -----", _signals_section(signals, vin)]
     out += ["", "===== end ====="]
     return "\n".join(out)

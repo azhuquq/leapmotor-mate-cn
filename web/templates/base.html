@@ -149,6 +149,18 @@
     }
     .trip-row:hover { background: rgba(51,65,85,.4); border-color: #334155; }
     @media (max-width: 639px) { .trip-row { column-gap: .5rem; } }   /* a phone's middle column needs the room */
+    /* A trip row lays out by its own width, not the window's: a sidebar, or the Overview's card, leaves it far less.
+       Narrow, the places and the battery take lines of their own; wider, the energy's source goes under the figures;
+       wide, all of it is one line. */
+    .trip-row[data-trip-id] { container-type: inline-size; }
+    .trip-row .trip-places-beside, .trip-row .trip-soc { display: none; }
+    .trip-row .trip-source { width: 100%; margin-top: -.5rem; text-align: right; }
+    @container (min-width: 560px) {
+      .trip-row .trip-places-beside { display: grid; }
+      .trip-row .trip-soc { display: flex; }
+      .trip-row .trip-places-under, .trip-row .trip-soc-line { display: none; }
+    }
+    @container (min-width: 800px) { .trip-row .trip-source { width: auto; margin-top: 0; margin-left: .5rem; text-align: left; } }
     /* A charge row is a <summary>: the click opens the body under it, its buttons keep their own click. */
     .charge-row { cursor: pointer; list-style: none; border-color: #1e293b; }   /* four lines a row: a border a shade lighter than a trip's keeps them apart */
     .charge-row::-webkit-details-marker { display: none; }
@@ -206,11 +218,16 @@
     .soc-used { background: linear-gradient(90deg, #f59e0b, #ef4444); }
 
     /* ── Trips dashboard: hero tiles (Mushroom-gradient) ────────── */
+    .hero-wrap { container-type: inline-size; }
     .hero-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
-    @media (min-width: 768px) { .hero-grid { grid-template-columns: repeat(4, 1fr); } }
+    /* All the tiles in one row where five fit, measured on the page beside Mate's and HA's sidebars, not the window;
+       narrower, two by two, an odd last one across both. */
+    @container (min-width: 880px) { .hero-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; } }
+    @container (max-width: 879.98px) { .hero-grid > .hero-tile:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+    /* The icon above the figure: beside it, a fifth of the page has no room for a long label such as "Verbrauchte Energie". */
     .hero-tile {
       position: relative; overflow: hidden; border-radius: 1rem;
-      padding: 1rem 1.1rem; display: flex; align-items: center; gap: .85rem;
+      padding: 1rem 1.1rem; display: flex; flex-direction: column; align-items: center; text-align: center; gap: .5rem;
       border: 1px solid rgba(148,163,184,.12);
     }
     .hero-ico {
@@ -226,6 +243,7 @@
     .t-trips { background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); }
     .t-eff   { background: linear-gradient(135deg, #334155 0%, #1e293b 100%); }
     .t-regen { background: linear-gradient(135deg, #16a34a 0%, #14532d 100%); }
+    .t-energy { background: linear-gradient(135deg, #0284c7 0%, #0c4a6e 100%); }
 
     /* ── Inline collapse button (inside year/month summaries) ─────── */
     .collapse-btn {
@@ -239,12 +257,9 @@
     .collapse-btn:hover { background: rgba(51,65,85,.6); border-color: #475569; color: #e2e8f0; }
     details[open] > summary .collapse-btn { display: inline-flex; }
 
-    /* ── Hero tiles: compact vertical layout on small phones ───────── */
+    /* ── Hero tiles: compact on small phones ───────── */
     @media (max-width: 639px) {
       .hero-tile {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
         padding: .65rem .4rem;
         gap: .3rem;
       }
@@ -570,7 +585,8 @@
                 font-weight:700;text-decoration:none;white-space:nowrap">{{ t('unconfigured_banner_btn') }}</a>
     </div>
     {% endif %}
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+    {# The pages' column. The Map empties it: on a wide screen the map is the page (D#438). #}
+    <div class="{% block content_width %}max-w-6xl{% endblock %} mx-auto px-4 sm:px-6 py-6">
       {% block content %}{% endblock %}
     </div>
   </main>
@@ -643,40 +659,99 @@
   </script>
 
   <script>
+  // Whether a reload now takes nothing from the reader: no edits left unsent, no form field focused, no interaction
+  // in the last 20s, no HTMX request in flight, the tab shown, no choice part-way through.
+  var lmLastInteraction = Date.now();
+  ['input', 'change', 'focusin', 'keydown', 'submit', 'pointerdown', 'touchstart', 'scroll']
+    .forEach(ev => document.addEventListener(ev, () => { lmLastInteraction = Date.now(); }, true));
+  // Edits not sent yet: a field of a form that saves, holding something other than it was drawn with or last saved.
+  function lmUnsentEdits() {
+    const saves = f => ['hx-post', 'hx-put', 'hx-patch', 'hx-delete'].some(a => f.hasAttribute(a)) || f.method === 'post';
+    // A list with one choice and none marked as drawn shows its first option.
+    const drawn = el => { const d = [...el.options].map(o => o.defaultSelected); if (!el.multiple && d.length && !d.includes(true)) d[0] = true; return d; };
+    const edited = el => !el.name || el.disabled || ['hidden', 'submit', 'button'].includes(el.type) ? false
+      : el.type === 'file' ? !!el.value
+      : el.type === 'checkbox' || el.type === 'radio' ? el.checked !== el.defaultChecked
+      : el.tagName === 'SELECT' ? drawn(el).some((d, i) => el.options[i].selected !== d)
+      : (el.value || '').trim() !== (el.tagName === 'INPUT' ? Object.assign(el.cloneNode(), { value: el.defaultValue }).value : el.defaultValue || '').trim();   // drawn as the field holds it: a slider reads 10.0 as 10
+    return [...document.forms].some(f => saves(f) && [...f.elements].some(edited));
+  }
+  // The values a form sent (an htmx request's parameters) are stored: its fields were last saved with them, so only
+  // what the reader changed since then is still unsent. A box not ticked, or a list with nothing chosen, is not among them.
+  function lmSaved(form, sent) {
+    const nth = {};
+    [...form.elements].forEach(el => {
+      if (!el.name || el.disabled) return;
+      const all = el.name in sent ? [].concat(sent[el.name]) : [];
+      if (el.type === 'checkbox' || el.type === 'radio') el.defaultChecked = all.includes(el.value);
+      else if (el.tagName === 'SELECT' && (el.multiple || el.name in sent)) [...el.options].forEach(o => { o.defaultSelected = all.includes(o.value); });
+      else if (!(el.name in sent)) return;
+      else { const k = nth[el.name] = (nth[el.name] || 0); nth[el.name]++; el.defaultValue = all[Math.min(k, all.length - 1)]; }   // fields of one name are sent in their order
+    });
+  }
+  function lmMayReload() {
+    if (lmUnsentEdits()) return false;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return false;
+    if (document.hidden) return false;
+    if (Date.now() - lmLastInteraction < 20000) return false;
+    if (document.querySelector('.htmx-request')) return false;
+    // Thinking is not idling. The guards above protect a field you are typing in, but not a
+    // choice you are part-way through: @pdifeo (beta #22) sat in merge mode weighing which
+    // trips to join, said nothing for twenty seconds, and the reload took the whole view with
+    // it — "se si pensa troppo la pagina fa refresh e bisogna ripensare di nuovo". A mode the
+    // user switched on, or an open dialog, means unfinished business: leave it alone.
+    if (document.querySelector('[data-holds-selection]')) return false;
+    const dlg = document.getElementById('merge-modal') || document.getElementById('charge-merge-modal');
+    return !(dlg && getComputedStyle(dlg).display !== 'none');
+  }
+  // A reload that keeps the reader's place: the <main> scroll position it stores is put back as the page is drawn again.
+  function lmReload() {
+    const main = document.querySelector('main');
+    if (main) sessionStorage.setItem('lm_scroll_' + location.pathname, String(main.scrollTop));
+    location.reload();
+  }
+  // A page showing a session in progress (session() names it off a panel that polls) reloads once that session is no
+  // longer the one in progress: it ended, or the next one began between two polls. It waits until a reload may go.
+  function lmReloadWhenOver(panelId, session) {
+    let was = session(), waiting = null;
+    document.body.addEventListener('htmx:afterSwap', (e) => {
+      if (e.target && e.target.id === panelId) {
+        const now = session();
+        if (was && now !== was && !waiting) waiting = setInterval(() => { if (lmMayReload()) lmReload(); }, 1000);
+        was = now;
+      }
+    });
+  }
+  (function () {
+    const main = document.querySelector('main');
+    const KEY = 'lm_scroll_' + location.pathname;
+    const saved = sessionStorage.getItem(KEY);
+    if (saved && main) {
+      sessionStorage.removeItem(KEY);
+      const put = () => { main.scrollTop = parseInt(saved, 10) || 0; };
+      put();
+      // Blocks loaded after the first paint make the page taller: back to the place as each arrives, until the reader moves.
+      const READER = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+      const done = () => { document.body.removeEventListener('htmx:afterSettle', put); READER.forEach(ev => removeEventListener(ev, done, true)); };
+      document.body.addEventListener('htmx:afterSettle', put);
+      READER.forEach(ev => addEventListener(ev, done, true));
+    }
+  })();
+  </script>
+
+  <script>
     // Global idle-aware auto-refresh: keep display pages fresh without a manual reload. Reloads
-    // every N seconds (from <body data-autorefresh>, 0 = disabled) but ONLY when the page is idle —
-    // never while a form field is focused, an interaction happened in the last 20s, an HTMX request
-    // is in flight, or the tab is hidden — so it can never wipe unsaved form input. Form/editor pages
+    // every N seconds (from <body data-autorefresh>, 0 = disabled) but ONLY when the page is idle
+    // (lmMayReload above), so it can never wipe unsaved form input. Form/editor pages
     // (settings, costs, scheduling, prepare-car, navigation, map) and pages with their own live
-    // updates (overview, charges) set data-autorefresh="0". The <main> scroll position is preserved.
+    // updates (overview, charges) set data-autorefresh="0". The <main> scroll position is preserved (lmReload).
     (function () {
       const secs = parseInt(document.body.dataset.autorefresh || '0', 10);
       if (!secs) return;
-      const main = document.querySelector('main');
-      const KEY = 'lm_scroll_' + location.pathname;
-      const saved = sessionStorage.getItem(KEY);
-      if (saved && main) { main.scrollTop = parseInt(saved, 10) || 0; sessionStorage.removeItem(KEY); }
-
-      let lastInteraction = Date.now();
-      ['input', 'change', 'focusin', 'keydown', 'submit', 'pointerdown', 'touchstart', 'scroll']
-        .forEach(ev => document.addEventListener(ev, () => { lastInteraction = Date.now(); }, true));
-
       setInterval(() => {
-        const ae = document.activeElement;
-        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
-        if (document.hidden) return;
-        if (Date.now() - lastInteraction < 20000) return;
-        if (document.querySelector('.htmx-request')) return;
-        // Thinking is not idling. The guards above protect a field you are typing in, but not a
-        // choice you are part-way through: @pdifeo (beta #22) sat in merge mode weighing which
-        // trips to join, said nothing for twenty seconds, and the reload took the whole view with
-        // it — "se si pensa troppo la pagina fa refresh e bisogna ripensare di nuovo". A mode the
-        // user switched on, or an open dialog, means unfinished business: leave it alone.
-        if (document.querySelector('[data-holds-selection]')) return;
-        const dlg = document.getElementById('merge-modal');
-        if (dlg && getComputedStyle(dlg).display !== 'none') return;
-        if (main) sessionStorage.setItem(KEY, String(main.scrollTop));
-        location.reload();
+        if (!lmMayReload()) return;
+        lmReload();
       }, secs * 1000);
     })();
   </script>
@@ -747,6 +822,9 @@
       shown = cal.dataset.calMonth;
       lmKeepInAddress('highlight', null);
       lmKeepInAddress('month', shown);     // today's month is none: a reload then follows the date into the next one
+      // The page's search, too, whose Back to calendar opens the month it was made on.
+      document.querySelectorAll('form input[type=hidden][name=year]').forEach(function (el) { el.value = cal.dataset.year; });
+      document.querySelectorAll('form input[type=hidden][name=month]').forEach(function (el) { el.value = cal.dataset.month; });
     }
     document.body.addEventListener('htmx:afterSettle', function () {
       var cal = document.querySelector('[data-cal-month]');
@@ -1181,6 +1259,8 @@
     });
     document.addEventListener('focusout', hide);
     document.addEventListener('scroll', hide, true);
+    // a refresh that replaced the element leaves its text stale, and no pointer event says so
+    document.addEventListener('htmx:afterSwap', function () { if (cur && !cur.isConnected) hide(); });
   })();
 </script>
 </body>

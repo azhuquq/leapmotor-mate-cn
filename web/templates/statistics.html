@@ -56,7 +56,7 @@ document.getElementById('cn-energy-reload').onclick = async function () {
    `typeof Chart === 'undefined'` guard returned in silence — no drawing, no error (beta #38,
    @michapr). Loaded first, any card can be placed anywhere on the page.
    → tests/test_charts_load_their_library_first.py #}
-{% if grouped or (efftemp and efftemp.points) %}
+{% if grouped or (efftemp and (efftemp.points or efftemp.fuel_points)) %}
 <script src="static/vendor/chart.umd.min.js"></script>
 {% endif %}
 
@@ -191,68 +191,150 @@ document.getElementById('cn-energy-reload').onclick = async function () {
    enrichment — this card costs one query and no cloud calls. The electric series is battery-only
    by construction on a REEV (finalize blanks generator-on trips); the petrol series carries its
    usual is_reev+research gate server-side. #}
-{% if efftemp and efftemp.points %}
+{% if efftemp and (efftemp.points or efftemp.fuel_points) %}
 <div class="card mb-6">
   <h2 class="font-semibold text-white mb-1">🌡️ {{ t('stats_efftemp_title') }}</h2>
   <p class="text-xs text-slate-400 mb-3">{{ t('stats_efftemp_hint').format(km=efftemp.min_km|int) }}</p>
   <canvas id="chart-efftemp" height="230"></canvas>
-  {% if efftemp.trend %}
-  <p class="text-[11px] text-slate-500 mt-2">📈
-    {{ t('stats_efftemp_trend_elec').format(val=efftemp.trend.per_10c|abs) }}
-    {% if efftemp.fuel_trend %} · {{ t('stats_efftemp_trend_fuel').format(val=efftemp.fuel_trend.per_10c|abs) }}{% endif %}
-    · r²={{ efftemp.trend.r2 }}
-  </p>
+  {# D#498: the trend is a cubic, and its coefficients are what is shown — the same unrounded
+     numbers go to Home Assistant over MQTT. Four significant digits here: `a` is ~0.0007, and two
+     decimals would print the whole bend as 0. The range is where the trips were: outside it the
+     cubic is a guess. #}
+  {% macro _coeffs(tr) %}a={{ '%.4g'|format(tr.a) }} · b={{ '%.4g'|format(tr.b) }} · c={{ '%.4g'|format(tr.c) }} · d={{ '%.4g'|format(tr.d) }} · r²={{ tr.r2 }}{% endmacro %}
+  {% if efftemp.trend or efftemp.fuel_trend %}
+  <div class="text-[11px] text-slate-500 mt-2 space-y-0.5" data-efftemp-trend>
+    <p>📈 {{ t('stats_efftemp_trend_formula') }}</p>
+    {% if efftemp.trend %}<p>{{ t('stats_efftemp_trend_elec').format(lo=efftemp.trend.t_min, hi=efftemp.trend.t_max, coeffs=_coeffs(efftemp.trend)) }}</p>{% endif %}
+    {% if efftemp.fuel_trend %}<p>{{ t('stats_efftemp_trend_fuel').format(lo=efftemp.fuel_trend.t_min, hi=efftemp.fuel_trend.t_max, coeffs=_coeffs(efftemp.fuel_trend)) }}</p>{% endif %}
+    {# D#498 (@Dawe02): the one figure to carry away, the slope of a straight line through the same
+       trips. Not drawn; its own r² says how little of the spread a line explains. #}
+    {% macro _slope(l) %}{{ '+' if l.slope10 > 0 else '' }}{{ l.slope10|dec(2) }}{% endmacro %}
+    {% if efftemp.line %}<p>📏 {{ t('stats_efftemp_line_elec').format(slope=_slope(efftemp.line), r2=efftemp.line.r2) }}</p>{% endif %}
+    {% if efftemp.fuel_line %}<p>📏 {{ t('stats_efftemp_line_fuel').format(slope=_slope(efftemp.fuel_line), r2=efftemp.fuel_line.r2) }}</p>{% endif %}
+    <p>{{ t('stats_efftemp_band') }}</p>
+  </div>
   {% endif %}
   <script>
   (function () {
     var el = document.getElementById('chart-efftemp');
     if (!el || typeof Chart === 'undefined') return;
     var data = {{ efftemp | tojson }};
+    var comma = {{ (lang not in ('en', 'zh-CN', 'zh-TW'))|tojson }};   // the rule of units.decimal_point
+    function one(v) {                           // one decimal on every number of the box, so they line up
+      var s = Number(v).toFixed(1);
+      return comma ? s.replace('.', ',') : s;
+    }
     var datasets = [{
       label: '{{ t('stats_efftemp_electric') }}',
       data: data.points.map(function (p) { return { x: p.t, y: p.e, id: p.id, km: p.km, d: p.ts }; }),
-      backgroundColor: 'rgba(56,189,248,0.65)', pointRadius: 4, pointHoverRadius: 6
+      backgroundColor: 'rgba(56,189,248,0.65)', pointRadius: 4, pointHoverRadius: 6, unit: 'kWh/100km'
     }];
-    if (data.trend && data.points.length >= 8) {
-      var ts = data.points.map(function (p) { return p.t; });
-      var lo = Math.min.apply(null, ts), hi = Math.max.apply(null, ts);
-      datasets.push({ type: 'line', label: '',
-        data: [{x: lo, y: data.trend.at20c + data.trend.per_10c/10*(lo-20)},
-               {x: hi, y: data.trend.at20c + data.trend.per_10c/10*(hi-20)}],
+    // The cubic drawn only over the temperatures the trips were at (D#498): beyond them it is a guess.
+    // Sampled every 0.1 °C (48 steps at least), the step the hover cursor moves along it by. `u` is
+    // the curve's 95 % interval there, k·√(gᵀ·cov·g) in z = (T − mid)/half (db_reader._cubic_trend).
+    function curve(tr) {
+      var out = [], steps = Math.max(48, Math.round((tr.t_max - tr.t_min) * 10));
+      for (var i = 0; i <= steps; i++) {
+        var x = tr.t_min + (tr.t_max - tr.t_min) * i / steps, v = (x - tr.mid) / tr.half, g = [1, v, v * v, v * v * v], q = 0;
+        for (var r = 0; r < 4; r++) for (var c = 0; c < 4; c++) q += g[r] * tr.cov[r][c] * g[c];
+        out.push({x: x, y: ((tr.a * x + tr.b) * x + tr.c) * x + tr.d, u: tr.k * Math.sqrt(Math.max(q, 0))});
+      }
+      return out;
+    }
+    // The interval as a shaded band around each visible curve, drawn from the curve's own points, so
+    // hiding the curve in the legend hides its band; its axis is stretched to hold it.
+    var bandPlugin = { id: 'efftempBand', afterDataLimits: function (chart, args) {
+      var sc = args.scale;
+      chart.data.datasets.forEach(function (ds, i) {
+        if (!ds.isCurve || !chart.isDatasetVisible(i) || (ds.yAxisID || 'y') !== sc.id) return;
+        ds.data.forEach(function (p) { sc.min = Math.min(sc.min, p.y - p.u); sc.max = Math.max(sc.max, p.y + p.u); });
+      });
+    }, beforeDatasetsDraw: function (chart) {
+      var ctx = chart.ctx, a = chart.chartArea;
+      chart.data.datasets.forEach(function (ds, i) {
+        if (!ds.isCurve || !chart.isDatasetVisible(i)) return;
+        var sx = chart.scales.x, sy = chart.scales[ds.yAxisID || 'y'], pts = ds.data;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top); ctx.clip();
+        ctx.beginPath();
+        pts.forEach(function (p) { ctx.lineTo(sx.getPixelForValue(p.x), sy.getPixelForValue(p.y + p.u)); });
+        for (var j = pts.length - 1; j >= 0; j--)
+          ctx.lineTo(sx.getPixelForValue(pts[j].x), sy.getPixelForValue(pts[j].y - pts[j].u));
+        ctx.closePath(); ctx.fillStyle = ds.bandColor; ctx.fill();
+        ctx.restore();
+      });
+    } };
+    if (data.trend) {
+      datasets.push({ type: 'line', label: '', data: curve(data.trend), isCurve: true, unit: 'kWh/100km',
+        bandColor: 'rgba(56,189,248,0.15)',
         borderColor: '#38bdf8', borderWidth: 1.5, borderDash: [6, 4],
-        pointRadius: 0, fill: false });
+        pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#38bdf8', fill: false, tension: 0 });
     }
     if (data.fuel_points && data.fuel_points.length) {
       datasets.push({ label: '{{ t('stats_efftemp_petrol') }}',
         data: data.fuel_points.map(function (p) { return { x: p.t, y: p.l, id: p.id, km: p.km, d: p.ts }; }),
         backgroundColor: 'rgba(251,146,60,0.65)', pointRadius: 4, pointHoverRadius: 6,
-        yAxisID: 'y1' });
-      if (data.fuel_trend && data.fuel_points.length >= 8) {
-        var ft = data.fuel_points.map(function (p) { return p.t; });
-        var flo = Math.min.apply(null, ft), fhi = Math.max.apply(null, ft);
-        datasets.push({ type: 'line', label: '',
-          data: [{x: flo, y: data.fuel_trend.at20c + data.fuel_trend.per_10c/10*(flo-20)},
-                 {x: fhi, y: data.fuel_trend.at20c + data.fuel_trend.per_10c/10*(fhi-20)}],
-          borderColor: '#fb923c', borderWidth: 1.5, borderDash: [6, 4],
-          pointRadius: 0, fill: false, yAxisID: 'y1' });
+        yAxisID: 'y1', unit: 'L/100km' });
+      if (data.fuel_trend) {
+        datasets.push({ type: 'line', label: '', data: curve(data.fuel_trend), isCurve: true, unit: 'L/100km',
+          bandColor: 'rgba(251,146,60,0.15)',
+          borderColor: '#fb923c', borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 4,
+          pointHoverBackgroundColor: '#fb923c', fill: false, tension: 0, yAxisID: 'y1' });
       }
     }
+    // Over the chart the cursor rides the curve, as on the trip charts: the curve's point at the cursor's
+    // temperature, and a trip only when the cursor is on its dot.
+    Chart.Interaction.modes.efftempCursor = function (chart, e, options, useFinalPosition) {
+      if (!chart.isPointInArea(e)) return [];
+      var items = Chart.Interaction.modes.point(chart, e, { intersect: true }, useFinalPosition)
+        .filter(function (it) { return !chart.data.datasets[it.datasetIndex].isCurve; });
+      chart.getSortedVisibleDatasetMetas().forEach(function (meta) {
+        var pts = meta.data;
+        if (!chart.data.datasets[meta.index].isCurve || !pts.length) return;
+        if (e.x < pts[0].x - 2 || e.x > pts[pts.length - 1].x + 2) return;
+        var best = 0;
+        pts.forEach(function (pt, i) { if (Math.abs(pt.x - e.x) < Math.abs(pts[best].x - e.x)) best = i; });
+        items.unshift({ element: pts[best], datasetIndex: meta.index, index: best });
+      });
+      return items;
+    };
+    // Each line of the box carries the mark it has on the chart: the curve's dash, a trip's dot.
+    function dash(color) {
+      var c = document.createElement('canvas'), g = c.getContext('2d');
+      c.width = 22; c.height = 10;            // the last 6 px: a gap before the text
+      g.strokeStyle = color; g.lineWidth = 2; g.setLineDash([4, 3]);
+      g.beginPath(); g.moveTo(0, 5); g.lineTo(15, 5); g.stroke();
+      return c;
+    }
+    var cursorLine = { id: 'efftempCursorLine', afterDatasetsDraw: function (chart) {
+      var on = chart.tooltip.getActiveElements().filter(function (it) {
+        return chart.data.datasets[it.datasetIndex].isCurve; })[0];
+      if (!on) return;
+      var ctx = chart.ctx, a = chart.chartArea;
+      ctx.save();
+      ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(on.element.x, a.top); ctx.lineTo(on.element.x, a.bottom); ctx.stroke();
+      ctx.restore();
+    } };
     new Chart(el, {
       type: 'scatter',
       data: { datasets: datasets },
+      plugins: [bandPlugin, cursorLine],
       options: { responsive: true, maintainAspectRatio: true,
+        interaction: { mode: 'efftempCursor', intersect: false },
         plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } },
-          tooltip: { filter: function (item) {
-              // Trend-line points have only x/y; show tooltips for trip points only.
-              return item.raw && item.raw.km != null;
-            }, callbacks: { label: function (c) {
-            var p = c.raw;
-            // The plotted value is stored as y; p.e/p.l were the source fields and are not
-            // copied into the Chart.js point object, which made the tooltip print undefined.
-            var value = c.parsed && c.parsed.y != null ? c.parsed.y : p.y;
-            return c.dataset.yAxisID === 'y1'
-              ? value + ' L/100km · ' + p.km + ' km · ' + p.d
-              : value + ' kWh/100km · ' + p.km + ' km · ' + p.d; } } } },
+          tooltip: { usePointStyle: true, bodySpacing: 6, callbacks: {
+            title: function (items) { return one(items[0].raw.x) + ' °C'; },
+            label: function (c) {
+              var p = c.raw;
+              return c.dataset.isCurve
+                ? one(p.y) + ' ± ' + one(p.u) + ' ' + c.dataset.unit
+                : one(p.y) + ' ' + c.dataset.unit + ' · ' + one(p.km) + ' km · ' + p.d; },
+            labelPointStyle: function (c) {
+              return { pointStyle: c.dataset.isCurve ? dash(c.dataset.borderColor) : 'circle', rotation: 0 }; },
+            labelColor: function (c) {
+              var col = c.dataset.isCurve ? c.dataset.borderColor : c.dataset.backgroundColor;
+              return { borderColor: col, backgroundColor: col }; } } } },
         scales: {
           x: { title: { display: true, text: '°C', color: '#64748b' },
                ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },

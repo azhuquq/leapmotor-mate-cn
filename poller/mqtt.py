@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 
 import capability_profile
+from db import _coord_valid
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +104,14 @@ class MqttService:
         # absent", or the first discovery for that car is skipped.
         self.absent_temps: dict = {}        # vin → set of absent topic keys
         self._temps_published: dict = {}    # vin → what HA was last told
+        # The cars seen as range-extenders on this connection (#481). Seen once is enough: a frame without
+        # the fuel signal says the signal is missing, not that the tank went, and never deletes a sensor.
+        self._reev_vins: set = set()
         self._climate_on: dict = {}     # vin → latest polled A/C state, for the "A/C Off" guard
+        # D#498 — the consumption-vs-temperature trend as last published per car (the raw stored
+        # string), and the series whose entities have been announced on this connection.
+        self._trend_sent: dict = {}     # vin → raw JSON last published
+        self._trend_announced: set = set()   # (vin, series key)
         # V2L live state PER CAR: the idle baseline current (I0) frozen at session start, the running
         # session energy, and the previous-poll idle current that seeds I0. Mirrors the net-power
         # math that db_reader.get_v2l_sessions rebuilds from the positions log for history.
@@ -122,6 +130,11 @@ class MqttService:
         """The last A/C state polled for this car. The 'A/C Off' command skips when it is already
         off, and skipping on ANOTHER car's state is how a real off gets silently swallowed."""
         return self._climate_on.get(vin)
+
+    def fan_top_for(self, vin):
+        """This car's top fan speed: the Fan Level number's max, kept to by its command."""
+        from ui_command_access import fan_top
+        return fan_top(vin, self.get_setting)
 
     def set_climate_on(self, vin, value) -> None:
         self._climate_on[vin] = value
@@ -159,6 +172,8 @@ class MqttService:
             self.client.subscribe(f"{self.topic_prefix}/+/{_BEACON}")
             self._discovery_sent.clear()   # resend discovery for every car after a reconnect
             self._link_discovery_sent.clear()
+            self._trend_sent.clear()       # …and the trend, which a broker restart may have lost
+            self._trend_announced.clear()
         else:
             log.error("MQTT: connect refused (code %d)", rc)
 
@@ -220,8 +235,9 @@ class MqttService:
             snapshot = json.loads(self.get_setting(snapshot_key(vin), '{}'))
             # Effective permissions include freshness/account matching, but not the
             # timestamp itself: healthy refreshes must not republish every entity.
+            # The fan's top speed is the Fan Level number's max, from the same list entry.
             return (account_hash(username), tuple(allowed(snapshot, username, vin, key)
-                                                  for key in sorted(COMMANDS)))
+                                                  for key in sorted(COMMANDS)), self.fan_top_for(vin))
         except Exception:
             return ('unavailable',)
 
@@ -234,6 +250,7 @@ class MqttService:
         key = {'climate_auto': 'ac_on', 'climate_cool': 'quick_cool',
                'climate_heat': 'quick_heat', 'climate_vent': 'quick_vent',
                'fan_level': 'set_fan_level', 'recirculation': 'set_recirc',
+               'climate_temp': 'set_climate_temp',
                'door_lock': 'lock', 'lock_toggle': 'lock',
                'trunk': 'open_trunk', 'charge_limit': 'set_charge_limit',
                'charge_schedule': 'save_charge_schedule'}.get(key, key)
@@ -270,6 +287,9 @@ class MqttService:
         # Discovery per CAR: each one is its own Home Assistant device, and the second car's
         # entities never appear if one flag says "already sent" for the whole bridge.
         access = self._access_signature(data.vin)
+        # A range-extender whose discovery ran on a frame without the fuel signal: its first frame
+        # with it announces the fuel sensors, not the next reconnect.
+        newly_reev = getattr(data, "is_reev", False) and data.vin not in self._reev_vins
         if self.discovery_enabled and (data.vin not in self._discovery_sent
                 or self._access_published.get(data.vin) != access):
             self.publish_discovery(data)
@@ -284,6 +304,8 @@ class MqttService:
             # would never come back. Compared PER CAR, so one car's answer cannot re-publish the
             # other's entities on every poll.
             self._publish_temp_entities(data)
+        if self.discovery_enabled and newly_reev and data.vin not in self._reev_vins:
+            self._publish_fuel_entities(data)
         self._publish_sensors(data)
 
     # The three temperature entities and their HA config, shared by discovery and the re-check above
@@ -309,6 +331,72 @@ class MqttService:
                  "unit_of_measurement": "°C", "device_class": "temperature",
                  "unique_id": f"{device_id}_{key}", "device": self._device(vin)}), retain=True)
         self._temps_published[vin] = set(absent)
+
+    # A range-extender's fuel (#481): tank level (3235), the litres the car counts (3263), range on fuel
+    # alone (3259). No template: a value the car sent is published as it is, and `_EMPTY_NONE` would
+    # make an empty tank (0 %, 0 L, 0 km) unknown.
+    _FUEL_ENTITIES = (
+        ("fuel_level", "Fuel Level", {"unit": "%", "icon": "mdi:gas-station"}),
+        ("fuel_liters", "Fuel Volume", {"dc": "volume_storage", "unit": "L", "icon": "mdi:gas-station"}),
+        ("fuel_range", "Fuel Range", {"dc": "distance", "unit": "km", "icon": "mdi:map-marker-distance"}),
+    )
+
+    def _publish_fuel_entities(self, data):
+        """Announce the fuel sensors for a car seen as a range-extender, and only for one: a plain
+        electric car is not given three sensors that would stay unknown for ever. Never cleared."""
+        vin = data.vin
+        if getattr(data, "is_reev", False):
+            self._reev_vins.add(vin)
+        if vin not in self._reev_vins:
+            return
+        device_id = f"{self.topic_prefix}_mate_{vin.lower()}"
+        for key, name, extra in self._FUEL_ENTITIES:
+            conf = _sensor_conf(self.topic_prefix, vin, key, name, extra)
+            conf.update({"unique_id": f"{device_id}_{key}", "device": self._device(vin)})
+            self.client.publish(f"{_DISC}/sensor/{device_id}/{key}/config", json.dumps(conf), retain=True)
+
+    # The two series of the Statistics trend (D#498), as `a·T³ + b·T² + c·T + d` with T in °C.
+    _TREND_SERIES = (("elec", "consumption_trend", "Consumption Trend", "kWh/100km"),
+                     ("fuel", "fuel_trend", "Fuel Trend", "L/100km"))
+
+    def publish_trend(self, vin, raw):
+        """Publish one car's trend coefficients, as the web stored them. Unrounded: Home Assistant
+        multiplies them. The temperatures they were fitted on ride along as attributes — outside
+        them the cubic is a guess. A series announced once stays; a trend that went away reads
+        unknown, never 0. Nothing before the web has computed one, and nothing when unchanged."""
+        if not raw or self._trend_sent.get(vin) == raw:
+            return
+        if not self.client or not self.client.is_connected():
+            return
+        try:
+            stored = json.loads(raw)
+        except ValueError:
+            return
+        device_id = f"{self.topic_prefix}_mate_{vin.lower()}"
+        base = f"{self.topic_prefix}/{vin}"
+        for skey, key, name, unit in self._TREND_SERIES:
+            trend = stored.get(skey)
+            announced = (vin, skey) in self._trend_announced
+            if trend is None and not announced:
+                continue
+            if self.discovery_enabled and not announced:
+                for k in "abcd":
+                    conf = _sensor_conf(self.topic_prefix, vin, f"{key}_{k}", f"{name} {k}",
+                                        {"icon": "mdi:chart-bell-curve", "tpl": _EMPTY_NONE})
+                    conf["json_attributes_topic"] = f"{base}/{key}/attributes"
+                    conf.update({"unique_id": f"{device_id}_{key}_{k}", "device": self._device(vin)})
+                    self.client.publish(f"{_DISC}/sensor/{device_id}/{key}_{k}/config",
+                                        json.dumps(conf), retain=True)
+            self._trend_announced.add((vin, skey))
+            for k in "abcd":
+                self.client.publish(f"{base}/{key}_{k}",
+                                    "" if trend is None else repr(float(trend[k])), retain=True)
+            self.client.publish(f"{base}/{key}/attributes", json.dumps(
+                {} if trend is None else
+                {"formula": "a*T^3 + b*T^2 + c*T + d", "temperature_unit": "°C", "unit": unit,
+                 "r2": trend["r2"], "n": trend["n"],
+                 "t_min": trend["t_min"], "t_max": trend["t_max"]}), retain=True)
+        self._trend_sent[vin] = raw
 
     def _v2l_live(self, data):
         """Live V2L numbers for MQTT: NET discharge power (gross minus the idle baseline I0 frozen at
@@ -394,7 +482,19 @@ class MqttService:
         # `unknown` at every sleep of the car (#365).
         if data.range_km is not None:
             pub("range", data.range_km)
-        pub("odometer", data.odometer_km);     pub("speed", data.speed_kmh)
+        # A range-extender's fuel (#481), as the car sent it: 0 is an empty tank. A frame without one
+        # of them keeps the retained last value, like the range above.
+        if getattr(data, "is_reev", False):
+            for sub, val in (("fuel_level", data.fuel_level_pct), ("fuel_liters", data.fuel_liters),
+                             ("fuel_range", data.fuel_range_km)):
+                if val is not None:
+                    pub(sub, val)
+        # The same for a frame with no odometer: in memory it is 0 for the state machine, and a
+        # retained 0 would drop the sensor to 0 km and back (PR #358). An empty retained payload
+        # would delete the broker's value instead, so nothing is published.
+        if data.odometer_reported:
+            pub("odometer", data.odometer_km)
+        pub("speed", data.speed_kmh)
         pub("gear", data.gear);                pub("state", data.vehicle_state)
         # The car is powered up — signal 1258 (ON3), the same one the Ready automation triggers on.
         # `state` above cannot stand in for it: it only turns to "driving" once a gear is engaged or
@@ -418,7 +518,7 @@ class MqttService:
         pub("outside_temp", data.outside_temp)              # Open-Meteo (opt-in); None → entity dropped
         pub("ac_target_temp", data.climate_target_temp)
         pub("locked", data.is_locked);          pub("climate_on", data.climate_on)
-        pub("fan_level", data.fan_level or None)              # acAirVolume 1-7 (empty when no data)
+        pub("fan_level", data.fan_level or None)              # acAirVolume (empty when no data)
         pub("climate_power", data.climate_power)             # 1348 PTC power in W (None when absent)
         pub("recirculation", data.recirculation)             # binary: recirc on / fresh off
         pub("climate_mode", data.climate_mode_label or None) # auto/cool/heat/vent
@@ -461,9 +561,11 @@ class MqttService:
             pub("frame_ts", None)
             pub("data_age", None)
         self._publish_evcc(base, data)
-        self.client.publish(f"{base}/location",
-                            json.dumps({"latitude": data.latitude, "longitude": data.longitude}),
-                            retain=True)
+        # A frame without a fix reads (0, 0): the broker keeps the last fix, as for the odometer
+        if _coord_valid(data.latitude, data.longitude):
+            self.client.publish(f"{base}/location",
+                                json.dumps({"latitude": data.latitude, "longitude": data.longitude}),
+                                retain=True)
 
     def _publish_evcc(self, base, data):
         """EVCC-friendly boolean mirrors of plug/charging/climate.
@@ -556,10 +658,11 @@ class MqttService:
             ("charge_time_remaining", "Charge Time Remaining", {"dc": "duration", "unit": "min"}),
             ("v2l_power", "V2L Power", {"dc": "power", "unit": "W", "icon": "mdi:home-lightning-bolt"}),
             ("v2l_energy_session", "V2L Session Energy", {"unit": "Wh", "icon": "mdi:lightning-bolt"}),
-            ("tire_fl", "Tyre FL", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire"}),
-            ("tire_fr", "Tyre FR", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire"}),
-            ("tire_rl", "Tyre RL", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire"}),
-            ("tire_rr", "Tyre RR", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire"}),
+            # Empty-to-none like the current and voltage above: a pressure the car did not send is ""
+            ("tire_fl", "Tyre FL", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire", "tpl": _EMPTY_NONE}),
+            ("tire_fr", "Tyre FR", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire", "tpl": _EMPTY_NONE}),
+            ("tire_rl", "Tyre RL", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire", "tpl": _EMPTY_NONE}),
+            ("tire_rr", "Tyre RR", {"dc": "pressure", "unit": "bar", "icon": "mdi:tire", "tpl": _EMPTY_NONE}),
             ("gear", "Gear", {"icon": "mdi:car-shift-pattern"}),
             ("state", "State", {"icon": "mdi:car-info"}),
             ("last_seen", "Last Seen", {"dc": "timestamp", "icon": "mdi:clock-outline"}),
@@ -588,6 +691,7 @@ class MqttService:
         # MEASUREMENT that keeps changing (#144): a car that has never once sent one does not get the
         # entity, and publish_status re-runs this the moment that answer moves.
         self._publish_temp_entities(data)
+        self._publish_fuel_entities(data)
 
         # Comfort STATE sensors — read-only, shown only where they work on THIS car (the B10
         # reports these even though the matching remote commands are broken). A confirmed-broken
@@ -649,15 +753,15 @@ class MqttService:
         self.client.publish(f"{prefix}/{vin}/ota_notice", "", retain=True)
         self.client.publish(f"{prefix}/{vin}/ota_notice/attrs", "", retain=True)
 
-        # Fan level (signal 1941) as a writable HA NUMBER (1-7) and air recirculation (signal 1943)
-        # as a writable HA SWITCH — both validated on-car 2026-06-20. state_topic mirrors the live
-        # value; the /set command_topic routes to set_fan_level / set_recirc (poller dispatch). A
-        # single entity each = state + control (no separate read-only sensor).
+        # Fan level (signal 1941) as a writable HA NUMBER over the car's speeds and air recirculation
+        # (signal 1943) as a writable HA SWITCH — both validated on-car 2026-06-20. state_topic
+        # mirrors the live value; the /set command_topic routes to set_fan_level / set_recirc (poller
+        # dispatch). A single entity each = state + control (no separate read-only sensor).
         cfg("number", "fan_level", {
             "name": "Fan Level",
             "state_topic": f"{prefix}/{vin}/fan_level",
             "command_topic": f"{prefix}/{vin}/fan_level/set",
-            "min": 1, "max": 7, "step": 1, "icon": "mdi:fan",
+            "min": 1, "max": self.fan_top_for(vin), "step": 1, "icon": "mdi:fan",
             # Same reason as climate_power: `pub("fan_level", data.fan_level or None)` sends "" when
             # the car is not reporting the fan, and a number entity cannot read that.
             "value_template": _EMPTY_NONE,
@@ -667,6 +771,16 @@ class MqttService:
             "state_topic": f"{prefix}/{vin}/recirculation",
             "command_topic": f"{prefix}/{vin}/recirculation/set",
             "payload_on": "ON", "payload_off": "OFF", "icon": "mdi:autorenew",
+        })
+        # A/C target temperature as a writable HA NUMBER (#489). It reads the AC Target sensor's own
+        # topic, so the two always agree; the sensor stays for those who already use it. `/set` routes
+        # to the page's set_climate_temp body (poller dispatch): only the target changes.
+        cfg("number", "climate_temp", {
+            "name": "AC Target Temperature",
+            "state_topic": f"{prefix}/{vin}/ac_target_temp",
+            "command_topic": f"{prefix}/{vin}/climate_temp/set",
+            "min": 18, "max": 32, "step": 1, "unit_of_measurement": "°C",
+            "icon": "mdi:thermometer", "value_template": _EMPTY_NONE,
         })
 
         # Single "Door Lock" TOGGLE (HA `lock` platform): one control that shows the
@@ -793,9 +907,15 @@ class MqttService:
         # Clearing the retained configs makes HA drop them on existing installs too.
         self.client.publish(f"{_DISC}/button/{device_id}/lock/config", "", retain=True)
         self.client.publish(f"{_DISC}/button/{device_id}/unlock/config", "", retain=True)
+        # With coordinates the template answers 'None', the tracker's default reset payload, so Home
+        # Assistant takes the zone from the latitude/longitude attributes; a 'home' sent here would
+        # win over them wherever the car is (#453). Keeping the state topic lets an existing entity
+        # follow on the next message: without it, it showed the raw payload until HA restarted.
+        # Only the pair of zeros is no fix: one zero is the equator or the prime meridian.
         cfg("device_tracker", "location", {"name": "Location",
                                            "json_attributes_topic": f"{prefix}/{vin}/location",
                                            "state_topic": f"{prefix}/{vin}/location",
-                                           "value_template": "{{ 'home' if value_json.latitude else 'not_home' }}",
+                                           "value_template": "{{ 'None' if value_json.latitude or value_json.longitude"
+                                                             " else 'not_home' }}",
                                            "source_type": "gps"})
         log.info("MQTT: Home Assistant discovery published for %s", device_id)

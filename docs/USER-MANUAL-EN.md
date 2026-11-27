@@ -1,8 +1,338 @@
 # LeapMotor Mate — User Manual
 
-> **Mate version:** v4.15.8 · **Language:** English
+> **Mate version:** v5.4.0 · **Language:** English
 
-## New in 4.15.8
+## New in 5.4.0
+
+**The times of a recovered charge can be corrected.** A charge marked *✨ auto-detected* starts
+and ends at the two readings Mate saw it between, not when the car really charged. Now *✏️ Correct the
+times* moves its start and end inside that span: energy and battery levels stay as read, and a cost Mate
+computed follows the new start (with a time-of-use tariff the start time counts). A cost typed by hand
+stays as it is. The span can only narrow, so *Recover missed charges* does not find the charge a second
+time; to go back to the full span, delete the charge and recover it again (@matttiaromano, #501).
+
+**Under the temperature chart, the slope of a straight line.** On *Statistics → Consumption vs outside
+temperature*, under the curve, a line says by how many kWh/100 km consumption changes for every
+10 °C warmer according to a straight line through the same trips, with its r². With a range extender
+there is one for fuel too. It is not sent to Home Assistant (D#498).
+
+### New in 5.3.1
+
+**Croatian.** Mate speaks Croatian: *Settings → Language → Hrvatski* (thanks to @daleonidas).
+
+### New in 5.3.0
+
+**The temperature chart reads the right trips, and shows how sure its curve is.** On *Statistics →
+Consumption against outside temperature* each dot is a trip of the last two years with the consumption
+*Trips* shows, a merged trip is one dot, and longer trips weigh more in the curve. A shaded band shows how
+sure the curve is, and pointing at the chart gives the curve's value at that temperature with its ±. The
+four numbers that go to Home Assistant are fitted the same way (@arekm, #503).
+
+**Merged trips of a range extender, and lighter pages.** A merged trip refuelled between its segments no
+longer counts the refuel as petrol burned, and one whose generator ran in any segment has no electric
+consumption. *Overview*, *Trips* and a trip's page read only the history around the trips they show
+(@arekm, #502).
+
+**New trips are filled in again after a busy night.** When the database was busy at the wrong moment, the
+outside temperature, elevation and getEC of new trips stopped until Mate was restarted; the next sweep now
+fills them in (@arekm, #504).
+
+### New in 5.2.1
+
+**A charge behind a frozen frame is no longer thrown away.** When the cloud keeps serving the same data for
+days and the car is charged in the meantime, the only trace is a battery level that jumps in one poll. Mate
+measured that charge from the poll before, 30 seconds, and threw it away as impossible. It now starts at the
+first reading of the level it started from; its start and length are a bound, not the real ones. *Settings →
+Recover missed charges* finds it too, also for a charge lost before 5.2.1 (@matttiaromano, #501).
+
+### New in 5.2.0
+
+**The consumption-vs-temperature trend is a curve, and its numbers reach Home Assistant.** On
+*Statistics*, the trend through *Consumption against outside temperature* was a straight line; it is
+now a curve, a·T³ + b·T² + c·T + d, drawn only between the coldest and the warmest trip. Under the
+chart, the formula with its four numbers and its r². With MQTT on, the same numbers become the sensors
+`Consumption Trend a`…`d`, and on a range extender `Fuel Trend a`…`d`, so an automation can turn a
+forecast temperature into a consumption (@hristouzunovaz, D#498).
+
+### New in 5.1.1
+
+**Trips recorded before 3.10.6 give back the kilometres of a silence.** Until 3.10.6, a trip that opened
+after the cloud had been silent took its start from the last reading before the silence, so it carried
+the kilometres driven during it: a 1 km trip could read 59 km. On its first start 5.1.1 rewrites those
+trips from the reading that opened them, and moves the kilometres to *Kilometres measured while out of
+contact*, on *Statistics* and above the *Trips* calendar. Trips recorded with 3.10.6 or later do not
+change (@adoewa, #497).
+
+### New in 5.1.0
+
+**A log book on the Maintenance page.** Record what happens to the car with its date: tyre changes,
+modifications, breakdowns, damage, each with a note and, if you want, what it cost. Leave the odometer
+blank and Mate uses the one it read that day. A service of the official schedule takes a cost too
+(D#493, @DanielBrol).
+
+**Summer and winter tyres from the log book.** Each set's kilometres now start on the day its entry says
+it went on, so the change can fall on a different day every year, and you can add the kilometres each
+set did before Mate. The two fixed days of 5.0.0 are turned once into one entry per change, with the
+same totals, and their card in *Settings* is gone (D#493).
+
+**The last charge to 100%.** The *Battery health* page shows the last charge that ended at 100%, its
+day, how long ago and where. An LFP battery needs one now and then so its cells balance and its charge
+level is measured right; the page sets no limit of its own (D#490, @Tommy73LMB05).
+
+### New in 5.0.1
+
+**A Home Assistant command no longer loses the car's PIN.** A command sent over MQTT while Mate was
+saving a reading could go out without the PIN and be refused with "Vehicle PIN is missing", and the
+reading of that moment was lost ("Frame processing failed"). Mate's poller now uses its database from one
+thread at a time (@chengler, #495).
+
+### New in 5.0.0
+
+**Summer and winter tyres, each set with its own kilometres.** Off unless you switch it on in *Settings →
+🛞 Summer and winter tyres*. Choose the day the winter tyres go on and the day the summer ones go on; the
+days repeat every year. The *Maintenance* page then shows the set on the car, this season's kilometres and
+each set's total, counted from the odometer Mate already has, past seasons included (D#493, @DanielBrol).
+
+### New in 4.31.0
+
+**A password the Leapmotor app cut short is named.** The app can keep only the first 16 characters of a
+password, without a warning. When the cloud refuses a longer one, the setup wizard says to try its first 16
+characters (#492, @arekm; #482).
+
+**The Overview's rows close flush.** On a car that does not send some temperatures, a row was left half
+empty: a T03 showed *A/C Target* alone in the left half (#491, @matttiaromano).
+
+### New in 4.30.0
+
+**Home Assistant sets the A/C target temperature.** A new writable number, *AC Target Temperature*
+(18–32 °C), sets the target as the *Commands* page does: the climate keeps its mode, fan and
+recirculation. The *AC Target* sensor stays as it was (#489, @michapr).
+
+### New in 4.29.0
+
+**The Overview warns about a tyre.** Under the temperatures on the *Overview*, the row *Tyre pressure*
+gives the worst tyre's word: *Too low* or *Too high* in red, *Low* or *High* in amber, *Normal* in green,
+by the same rule as the tyres on *Vehicle* (the car's own alarm or under 2.0 bar is too low). It is a link
+to *Vehicle*; pointing at a warning names the tyres (D#483, @michapr).
+
+**Two drives with the car out of signal between them stay two power-ons.** A car parked where it cannot
+reach the cloud no longer joins the drive before and the drive after into one, so the trip no longer asks
+to be merged before *Convert with official data* (#487, @michapr).
+
+**The diagnostics bundle carries the charge readings** of the last 10 AC and 10 DC charges, and says which
+clock each of its times is on (#485, @arekm).
+
+### New in 4.28.0
+
+**Each tyre's pressure by day.** Under the tyres on *Vehicle*, the chart *Tyre pressure by day* draws each
+tyre's lowest (solid) and highest (dashed) pressure of every day, over 30 or 90 days, with the outside
+temperature of the same days below where you have it on. Pointing at a day gives each tyre's lowest –
+highest. A day with no reading is a gap. The history starts with this update (D#483, @michapr).
+
+**A range-extender's fuel in Home Assistant.** Three MQTT sensors: `Fuel Level` (%), `Fuel Volume` (L) and
+`Fuel Range` (km). An empty tank reads 0; a plain electric car does not get them (#481, @michapr).
+
+**When the charge is expected to end.** On the Overview, pointing at the charging chip or tapping it shows
+*Est. end 14:40*, the time *Charges* shows under *Time remaining*, which now reads *Est. end* too. By @arekm
+(#484).
+
+### New in 4.27.1
+
+**A page that reloads itself leaves what you typed alone.** A note or a figure typed in and not saved now
+holds the page's own reload until you save it or take it back (*Cancel*, where there is one): a trip note typed and left with a click
+elsewhere was gone at the next reload. By @arekm (#479).
+
+**The end of a charge reloads Charges when you are not using it.** It used to reload at once, whatever you
+were doing, and go back to the top. Now it waits as Trips does at the end of a trip, keeps your place, and
+also lists a charge followed by the next one between two updates (#479).
+
+**A charge typed in needs a date Mate can read.** A browser's date box takes a year of five digits: a past
+charge typed in with the year 72026 was saved, stayed the Overview's *Last charge* for good, with SoC
+0% → 0%, and could not be found on the *Charges* page. Mate now refuses a date it cannot read, the Overview
+shows "—" for a SoC a charge does not carry, and a charge already saved with such a date is listed above the
+*Charges* calendar, to correct its date with ✏️ *Edit* or delete it (@ebagnoli, #451).
+
+### New in 4.27.0
+
+**The trip in progress is on the Trips page, live.** While the car drives, the top of *Trips* shows
+*🚗 Driving*: LIVE or the age of the last reading, when the trip began, the distance so far, the charge
+level at the start and now, and the *Trip data* chart, updated every 30 seconds. When the trip ends, the
+page reloads once to show it among the trips, when you are not using it, and keeps your place. By @arekm
+(#477).
+
+**A page that reloads itself keeps your place.** *Battery health*, a trip and the other pages that reload
+themselves every 30 seconds come back to where you were reading, even when a block of the page loads a
+moment later (#476).
+
+### New in 4.26.0
+
+**The "←" leads back where you came from.** In Home Assistant there is no Back button, so the "←" at the
+top of a page is the way back. A trip opened from the Overview's *Recent Trips*, from *Similar trips* or
+from a Trips search now has "← Overview", "← Similar trips" or "← Trips", and it leads back there with the
+trip's row in view. A charge opened from a trip (⚡ ▸ *View charge →*) leads back to the trip, and one
+opened from a charging place on the Map leads back to the Map at the same centre and zoom. The ‹ › arrows
+keep the way back, and the Map keeps its view on a reload. By @arekm (#473, #474).
+
+**A Trips search stays in the address.** A reload shows the same search, and on Trips and Charges *Back to
+calendar* opens the month the calendar showed, not the one the page was opened on.
+
+**Each car has its own SoH reference.** With two cars, battery health measured both against one
+reference, and setting it for one car changed the other's (#472). Open *Settings → Battery* with each car
+selected and check its *SoH reference*.
+
+### New in 4.25.0
+
+**A security release: update.** A web page on another site could drive a Mate with no password, the doors
+included. With no password, Mate now answers only on the names a home network uses: an IP address,
+`localhost`, a name without dots, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`. If you open it
+through a public name (a DuckDNS name, a Tailscale `*.ts.net` name, a reverse proxy that passes its public
+name on), set a password in *Settings → Access*, opening Mate by its address on your network, or name the
+host in `MATE_ALLOWED_HOSTS` (see `.env.example`).
+
+**Also in this release.** With a password, you sign in once more after the update, and changing the password
+signs everyone else out. The Home Assistant token is sent to a public name only over a verified connection. As
+an add-on, the panel is unchanged; port 4000, if you opened it, refuses forms and frames from other sites. The desktop app needs MateDesktop 1.2.3 for this release; 1.2.2
+asks you to download a newer app.
+
+### New in 4.24.0
+
+**Czech.** Mate speaks Czech: *Settings → Language → Čeština* (thanks to @petrw1).
+
+**A switch for the elevation lookup.** *Settings → Trip defaults → Elevation and trip temperature*: untick it
+and Mate no longer sends a finished trip's GPS track to Open-Meteo by itself. The **Calculate elevation**
+button on a trip's page still looks that trip up when you press it.
+
+**A parked car stays where it parked.** A parked car west of Greenwich or south of the equator no longer
+jumps to the mirror point when its GPS readings lose their minus sign. Home Assistant's *Location* keeps the
+last fix when the car has none, and a car that sends no tyre pressure shows them as unknown, not 0 bar.
+
+**Charging, read the right way round.** A plugged-in car running its climate from the battery is no longer
+shown as charging, and a charge the car pauses stays one charge.
+
+### New in 4.23.0
+
+**The Map shows where the car is.** On the Map, a marker now gives the car's last known position, as on
+the Overview, and follows the car while the page is open; the map's view stays where you put it. To hide
+it, untick *Last Known Position* on the row under the map: the page remembers your choice.
+
+### New in 4.22.0
+
+**Recent Trips are the rows of Trips.** On the Overview, *Recent Trips* now shows each trip as its row on
+Trips, without the route: where it started and ended, the battery before and after, the energy it used and
+where that figure came from (*Measured by the car*, for example). The Overview gives no cost; the Trips
+lists still do. On Trips, every row now gives its kWh between the distance and the consumption, and a row
+beside the sidebar keeps its start and end places whole; a place still cut short gives its full name when
+you hover over it.
+
+### New in 4.21.0
+
+**Free charges have their own slice in Home vs Public.** On Charges, a charge typed **Free** used to
+count as Public; it now has its own lime slice and a **🆓 Free** tile, shown only when you have one. A
+Home charge you marked free (solar, for example) stays under Home. The legend of both rings is more
+compact: each kind gives its sessions and name, and under them its kWh and its share.
+
+### New in 4.20.0
+
+**Trips says the energy used.** A fifth tile on Trips gives the energy all your trips used, the same
+figure as Statistics' *Energy Used*, and a day's heading, the month strip and a search's total give their
+kWh too. The energy card adds the car's own *Total consumption* beside the distance and the average; the
+two can differ a little, because the cloud counts by date and Mate by the trips it recorded. Statistics'
+months and years now add up exactly to *Energy Used*.
+
+### New in 4.19.0
+
+**The fan has as many speeds as the car.** The cloud tells Mate how many fan speeds each car's remote
+climate has. On a car with more than seven, such as a B10 with nine, the Vehicle page reads "x / 9", the
+Commands fan slider runs from 1 to 9, and Home Assistant's *Fan Level* number goes up to 9. Other cars keep
+1 to 7.
+
+**A trip's regen counts the time each reading stands for.** Each braking reading now counts for the time
+since the car's previous reading, not for the poll interval, so new trips read more regen than before.
+Trips recorded before keep their figure.
+
+### New in 4.18.1
+
+**The Location tracker in Home Assistant follows the car's zone.** The `Location` device_tracker
+Mate publishes over MQTT read `home` whenever the car sent a position, wherever it was. It now reads
+the zone of the car's coordinates: `home`, `not_home`, or the name of another zone of yours; with no
+GPS it reads `not_home`. An automation that used it to tell whether the car is at home now sees the
+car leave.
+
+### New in 4.18.0
+
+**Each car has its own operation PIN.** In *Settings → Vehicle* the form reads "Operation PIN of this
+car", with the car's model and the end of its VIN; with two cars, pick the car first (there is no
+"All cars" any more). The PIN typed there is the one commands use: on a single car it could be saved
+where commands did not read it. A PIN saved by an earlier version becomes the car's own when Mate
+starts. A command to a car with no PIN is not sent, and the page says to set it in Settings → Vehicle.
+If a command is refused for a wrong PIN after the update, type the PIN once more there.
+
+### New in 4.17.0
+
+**The charging panel says when the charge ends.** On the *Charges* page, *Charging status* shows under
+the time remaining the time the charge ends, e.g. "Est. end 14:30", with its day when it ends on another
+one. It counts from when the car measured the minutes left, so a reading a few minutes old does not move
+it.
+
+### New in 4.16.3
+
+**A wallbox that moved house is found again.** Mate learns where your wallbox is from the charges it
+measured, and gives the wallbox counter only to charges there. After a move, home charges stayed without
+it. Now a charge away from that place still reads the counter and keeps it if the counter rose with the
+car (more than 2 kWh, never standing still while the car was charging); those charges move the place to
+your new home. Charges recorded before this version do not change.
+
+### New in 4.16.2
+
+**The map takes the screen it is on.** The *Map* page's map now takes the whole width of the page and
+ends where the row under it, with *Trips shown* and *Stations shown*, still fits on screen: larger on a
+big monitor, smaller on a laptop, 400 px at least. It follows the window when you resize it.
+
+### New in 4.16.1
+
+**A T03 shows its charge target.** On a T03 the *Scheduled charge target* card on the Charges page showed
+nothing right after a save, and Home Assistant's *Charge Limit* stayed unknown: the car's status does not
+carry it. Mate now reads it from the car's charge plan, which does.
+
+### New in 4.16.0
+
+**The Overview map draws today's last trip.** Under the car's dot, the *Last Known Position* map now draws
+the route of the car's latest trip: the trip under way while you drive, and the trip that ended today for
+the rest of the day. The lines are the ones the trip's own page draws. After midnight the map is clear again.
+
+**Commands are no longer refused because of a computer clock a few seconds behind the car.** Mate checks the
+time of the car's latest reading before a command, and refused one dated after the computer's clock
+(*Command not sent: state_timestamp_invalid*). A reading up to a minute ahead is now taken as current.
+
+### New in 4.15.12
+
+**On a T03 the charge target card says what it is.** The *Scheduled charge target* card on the Charges
+page said its number is not the upper limit in the car's own app. On a T03 it is: an owner set 92 % and
+then 90 % from the card, and the official app showed each as its upper charging limit. On a car with the
+simple charge scheduler, such as the T03, the card now says so.
+
+### New in 4.15.11
+
+**The MQTT odometer no longer drops to 0 km.** When a reading from the car carries no odometer, as some
+from the T03 do, Mate published 0 km on MQTT (the Home Assistant odometer sensor) and sent 0 km to ABRP.
+Such a reading now publishes nothing for the odometer: the sensor keeps the last value, as the range
+already did, and ABRP gets no odometer.
+
+### New in 4.15.10
+
+**Battery health no longer reads a missing temperature as 0 °C.** On a car that does not send its battery
+temperature, such as the T03, a reading taken by the web page during a charge stored 0 °C, and *Battery
+health* left the charge out as charged in the cold. A missing temperature now stays empty, and the zeros
+already stored from such a car are no longer taken as readings.
+
+### New in 4.15.9
+
+**Battery health counts the charges of a T03.** The T03 reports its battery level in whole points, and
+*Battery health* took each point it gained during an AC charge for a battery recalibration, leaving the
+charge out: the page had no figure. Now one point at a time is a normal rise; a real jump still leaves a
+charge out. Charges already recorded count too.
+
+### New in 4.15.8
 
 **The setup wizard offers the range-extender packs.** A C10 or B10 with a range extender can pick its
 pack (*28.4 kWh — REEV* or *18.8 kWh — REEV*) under *Battery pack* in the setup wizard. Until now the
@@ -809,7 +1139,7 @@ To set Mate up you need three things:
    your account). It ships with Mate and is installed by itself on first start: you are never asked
    for it.
 
-3. **Email, password and the account's operation PIN.** The **4-digit PIN** is the one you also use
+3. **Email, password and the car's operation PIN.** The **4-digit PIN** is the one you also use
    in the official app to authorize remote commands (locking, climate…).
 
 > 💡 Just want to take a look without setting anything up? Skip it all and use **[demo mode](#9-demo-mode)**:
@@ -938,6 +1268,7 @@ Depending on the model:
 > Mate captures it the first time you save the capacity and then leaves it alone, so that adopting
 > a measured (already-aged) figure can never reset your health to ~100 % and hide the ageing. If it
 > was captured from the wrong number, health can read above 100 %: correct it in the same place.
+> With several cars, each car has its own: the field shows the selected car's.
 
 > **If Mate's own default has since been disproved 🆕**, Settings → Battery says so on the spot and
 > offers the corrected figure with one button — it never rewrites the number behind you. Today this
@@ -974,7 +1305,8 @@ access password* — that one ends the password session, nothing else. It is not
 there is nothing to end.
 
 **To change the car's PIN 🆕** — if you change it on the car, nothing needs unlinking: go to
-**Settings → Vehicle**, and under the account address you will find **Operation PIN**. It is typed
+**Settings → Vehicle**, and under the account address you will find **Operation PIN of this car**.
+Each car has its own PIN, the one set on the car; with two cars, pick the car first. It is typed
 twice, with an eye to read it back, and takes effect at once — both for commands from the page and
 for the ones arriving from Home Assistant. Asked for by **@alextchao** (#225).
 
@@ -1003,7 +1335,7 @@ current month. **Battery health** does the same with the views picked on its two
 
 **Language, currency and units** are changed from *Settings → 🌍 Language & Currency*:
 
-- **Language:** English, Italiano, Français, Deutsch, Polski, Nederlands, Português, Español.
+- **Language:** English, Italiano, Français, Deutsch, Polski, Nederlands, Português, Español, Čeština, Hrvatski.
   *(A written manual like this one exists in English, Italian, French, German and Spanish.)*
 - **Currency:** for costs (€, £, …).
 - **Units:** metric (km, °C) or imperial UK/US (miles, °F). The data is always stored in km/°C; only
@@ -1040,6 +1372,9 @@ resolution — a tiny ~10 W load stays invisible).
 
 Further down you'll find mini-statistics and a **"Car responsiveness" indicator** (a 🟢/🟡/🔴 dot, ⚪
 if there's no data): it summarizes how well the car has responded to the latest commands sent.
+
+The **Last Known Position** map also draws the GPS track of today's last trip — while you drive, the
+trip under way — as the trip's detail draws it.
 
 **The last charge says both 🆕** — the **Last charge** tile leads with the same figure as the charge's
 row in Charges: at home, with a wallbox counter, the **🔌 wallbox (billed)** kWh, and under it what reached the
@@ -1139,7 +1474,7 @@ duration, consumption (kWh/100 km), energy recovered** in braking and the estima
   and the **highest and lowest** temperature of the drive — not an average, so a valley-to-pass
   climb shows the real drop. Between them they explain a good part of a drive's consumption: a climb
   costs energy, cold costs range. Trips recorded before this existed have a **Calculate elevation**
-  button, and the whole thing can be switched off in Settings.
+  button, and the automatic lookup can be switched off in *Settings → Trip defaults → Elevation and trip temperature*.
 - **Driving and stopped 🆕.** Under the duration, the detail splits it into the time driving and the
   time stopped — at a standstill inside the drive (lights, queues) — from Mate's readings several
   seconds apart. A stop between joined pieces counts as neither, and a hole in the readings shows as
@@ -1168,7 +1503,9 @@ duration, consumption (kWh/100 km), energy recovered** in braking and the estima
   and its numbers in its line's colour. Each entry of the legend switches its line on and off — an
   empty square marks a line switched off — and a band whose lines are all off folds away. All lines
   start switched on; the choice is remembered in the browser for every trip. The hover box opens
-  with the time of day, to the second, and the minute of the drive.
+  with the time of day, to the second, and the minute of the drive. While the car drives, the same chart
+  sits at the top of the Trips page, live, under *🚗 Driving*: it says when the trip began and from which
+  level, how far the car has gone so far, and grows with every poll.
 - **Official consumption from the cloud 🆕** — when available, a trip's **consumption, efficiency and
   cost** come from Leapmotor's **official figure** (the real **driving / A·C / other** split) instead of
   the battery‑% estimate alone. Right after a drive you see the estimate marked **⏳ provisional**; once
@@ -1256,10 +1593,10 @@ The type is classified with a label:
   **est.**, and *Reset*, in the ✎, brings the computed figure back. The charges you priced this way
   before v3.16.0 read **✎ Manual** again, with their price: there is nothing to do.
 - **Home vs Public 🆕** — beside the *AC vs DC Distribution* card there is a second one:
-  **Home**, **Public**, **✎ Manual** and **To confirm**, as a donut and a tile each (the last two
-  only when there are any). They always add up to the number of charges written above them, so a
-  charge priced by hand is not counted as public, and one still waiting for its type shows as
-  waiting.
+  **Home**, **Public**, **🆓 Free**, **✎ Manual** and **To confirm**, as a donut and a tile each (the
+  last three only when there are any). They always add up to the number of charges written above
+  them, so a charge priced by hand is not counted as public, one typed Free is not either, and one
+  still waiting for its type shows as waiting. A Home charge marked free stays under Home.
 - **A charge abandoned by the cloud ends when current last flowed 🆕** (#289) — when the car falls
   asleep with the cable in, the cloud does not say so: it keeps repeating the last news it has, and
   in that news the cable still reads connected. The charge used to stay open until the car next woke
@@ -1393,8 +1730,15 @@ odometer) and number of trips,
 with the related **trends** (efficiency and regen over time). The totals also include a **Total V2L**
 card showing the cumulative energy drawn via V2L over all time.
 
-**Consumption against outside temperature 🆕** — one dot per finished trip: its consumption against
-the air temperature it was driven in, with a dashed trend line through them. It answers the question
+**Consumption against outside temperature 🆕** — one dot per trip of at least 3 km from the last two years (a merged trip is one dot): its
+consumption, the one *Trips* shows, against the air temperature it was driven in, with a dashed trend curve through them,
+a·T³ + b·T² + c·T + d with T in °C, drawn between the coldest and the warmest trip. Under the chart
+are its four numbers and its r² (how much of the spread the curve explains, from 0 to 1); it appears
+with at least 8 trips on at least 4 different temperatures. Longer trips weigh more, so the curve
+reads as the energy per kilometre actually driven. The shaded band around it is how sure the curve is:
+with 95 % confidence the true trend lies inside it, narrow where there were many trips. Point at the
+chart and a box gives the temperature under the cursor and the curve's value there, with its ±; on a
+dot it also lists that dot's trips. On a range extender petrol has its own. It answers the question
 every owner asks when the cold arrives — *how much does my car really drink at 5 °C?* — out of your
 own driving rather than a table. It needs the trips to carry an outside temperature (see *Overview*),
 and on realistic data the pattern is legible after about a month of driving.
@@ -1500,7 +1844,7 @@ shows no comparison against the one before (every figure would read −100 %, wh
 calendar and not your driving).
 
 **Where the consumption figure comes from, and when Mate overrules it.** *Average consumption* and
-*Energy used* normally come from the car's own official total for the month. That total is only as
+*Total consumption* normally come from the car's own official total for the month. That total is only as
 complete as your car's connection was: if the car couldn't reach the cloud during a drive, that
 whole drive is missing from it. When the total comes back far below what Mate's own trips add up to
 for the same month, Mate shows **its own figure instead** — the same one the Trips page shows — and
@@ -1545,6 +1889,11 @@ measurement has no spread to report.
 
 It is an **estimate**, then — not a laboratory diagnosis — and it settles as charges accumulate.
 
+**Last charge to 100%.** At the top of the page: the last closed charge that ended at 100%, with its
+day, how many days ago and where, named as on *Charges*. A charge that stopped at 99.9% is not one.
+An LFP battery is charged to 100% now and then so its cells balance and the charge level is measured
+right; how often is your call, and the page sets no threshold (D#490, @Tommy73LMB05).
+
 ### Maintenance
 **(menu: Maintenance)** — The **maintenance due dates** for your car, based on the **official schedule
 for your model** (T03, B05, B10, C10). For each service item (e.g. service, brake fluid, cabin
@@ -1558,6 +1907,16 @@ because whatever comes first is what's due.
 - The **registration / delivery date is now editable**: click the **✏️** next to the saved date to
   correct a mistake (the new value overwrites the old one).
 - The distances respect the chosen unit (km or miles).
+- **Log book** (D#493, @DanielBrol): **+ Add** records an entry with its type (winter tyres fitted,
+  summer tyres fitted, modification, breakdown, damage, other), date, odometer, cost and note. A blank
+  odometer is the one Mate read that day, or the last day before it with a reading. 🗑 deletes an entry.
+  A service of the schedule takes a cost too. Costs stay on this page: they are not added to the charging costs.
+- **Summer and winter tyres**: the 🛞 card appears with the first tyre entry of the log book. It shows
+  the set on the car, this season's kilometres and each set's total. Each set counts from the day its
+  entry says it went on; before the first entry no set is known and nothing is counted. Days without a
+  reading are not estimated: the distance across them goes to the day the next reading arrives.
+  *Kilometres each set did before Mate* adds what each set had done before Mate's first reading. If you
+  used the two fixed days of 5.0.0, Mate turned them into entries once, with the same totals.
 
 ### Commands
 **(menu: Commands)** — The **remote commands**. From here you can:
@@ -1637,7 +1996,7 @@ stations**. The page has three parts:
 ### Vehicle
 **(menu: Vehicle)** — The **full status** card for the car: all the sensors available on your model
 (charge, range, inside temperature, gear, doors, windows, tyres, locks, charge status…), now also the
-**climate detail**: **fan level** (1–7), **air recirculation** (fresh / recirculate) and the **active
+**climate detail**: **fan level** (1–7, or more on a car that has more, such as 1–9), **air recirculation** (fresh / recirculate) and the **active
 climate mode** (AUTO / Cool / Heat / Vent). Mate shows **only what your car actually reports** (some
 models don't expose certain data). The sunshade tile says how far it is open — "40%" over "Open" —
 as the window tiles do.
@@ -1719,10 +2078,11 @@ divided into three columns.
   salted hash, never in clear text. **If you lose it**, you are not locked out for good: the *New
   password* box doesn't ask for the old one, so from any device still signed in you can simply set
   a new one. If no device is signed in any more, the `MATE_AUTH_PASSWORD` environment variable
-  overrides whatever is stored. ⚠️ *Overrides*, not replaces: the forgotten hash stays in the
-  database underneath, so once you are back in, set a new password (or clear it) in **Settings →
-  Access** and only then remove the variable — remove it first and the forgotten one is in charge
-  again.
+  overrides whatever is stored: give the container that variable, set to a new password, restart it
+  and sign in with that. ⚠️ *Overrides*, not replaces: the forgotten hash stays in the database
+  underneath, and while the variable is set **Settings → Access** can neither change nor clear it.
+  So keep the variable: from then on it is the password, and removing it puts the forgotten one in
+  charge again.
 
 - **Database** — the size of the DB and the **GPS retention**: you can keep the GPS points "forever"
   (default) or delete those older than 6/12/18/24 months to save space. *Only positions are pruned*:
@@ -1796,7 +2156,7 @@ Sends the car's telemetry to ABRP for real-time trip planning.
 
 ### MQTT → Home Assistant
 Publishes the car's status (charge, range, position, doors, charge status…) as **entities in Home
-Assistant**, with **auto-discovery**. You can also **command** the car from the HA entities — including a writable **Charge Limit** number to set the target SoC, a writable **Charge Schedule** text entity that takes a JSON plan for automations (`{"start":"23:00","soc":90}` — every key optional, and anything you omit keeps its current value), a writable **Fan Level** number (1–7) and a writable **Recirculation** switch, plus a **Climate Mode** sensor (AUTO / Cool / Heat / Vent). The published entities also include three read-only V2L ones: **`V2L Active`** (binary sensor), **`V2L Power`** (W) and **`V2L Session Energy`** (Wh), and a **`Ready`** binary sensor that turns on the moment the car is powered up — before it moves, which is when an automation still has time to act. A **`Sunshade Position`** sensor says how far the sunshade is open, in % (0 = closed); the binary **`Sunshade`** stays as it was, on for any opening.
+Assistant**, with **auto-discovery**. You can also **command** the car from the HA entities — including a writable **Charge Limit** number to set the target SoC, a writable **Charge Schedule** text entity that takes a JSON plan for automations (`{"start":"23:00","soc":90}` — every key optional, and anything you omit keeps its current value), a writable **Fan Level** number (1–7, or more on a car that has more, such as 1–9), a writable **AC Target Temperature** number (18–32 °C: only the target changes, the climate keeps its mode, fan and recirculation) and a writable **Recirculation** switch, plus a **Climate Mode** sensor (AUTO / Cool / Heat / Vent). The published entities also include three read-only V2L ones: **`V2L Active`** (binary sensor), **`V2L Power`** (W) and **`V2L Session Energy`** (Wh), and a **`Ready`** binary sensor that turns on the moment the car is powered up — before it moves, which is when an automation still has time to act. A **`Sunshade Position`** sensor says how far the sunshade is open, in % (0 = closed); the binary **`Sunshade`** stays as it was, on for any opening. On a range-extender, three fuel sensors: **`Fuel Level`** (%), **`Fuel Volume`** (L, the litres the car counts) and **`Fuel Range`** (km on fuel alone); an empty tank reads 0, and a plain electric car does not get them. The four numbers of the consumption-vs-temperature trend (see *Statistics*) are the sensors **`Consumption Trend a`**, **`b`**, **`c`**, **`d`** (kWh/100 km, with T in °C), and on a range extender **`Fuel Trend a`**…**`d`** (L/100 km); they are not rounded, and their attributes give `t_min` and `t_max`, the temperatures the curve was fitted on (outside them it is a guess), `n` trips and `r2`. They are recomputed every 5 minutes, and read unknown, never 0, while there is no curve.
 
 Entities **your** car doesn't support aren't left on your hands: the ones the model lacks (heated seats,
 steering wheel…) are never created, and a **temperature entity** whose sensor the car has never reported
@@ -1855,6 +2215,11 @@ Almost always it's because the **same Leapmotor account is being used somewhere 
 app, another integration, a second instance of Mate). Use an **account dedicated only to Mate** and
 **change its password**, using it only here (so the other client is kicked out and can't get back in).
 See [requirements](#2-before-you-start-the-requirements).
+
+**Mate says "incorrect account or password", but the app signs in.**
+The Leapmotor app can keep only the first 16 characters of a password and drop the rest without a
+warning. If yours is longer and you typed or pasted it into the app, try only its first 16 characters
+in Mate. Otherwise, check that the email is the account's, with no extra characters.
 
 **A command gives a "timeout" / amber notice.**
 It's (usually) not a Mate problem. The commands are *real-time* and depend on the **car's
@@ -1951,7 +2316,7 @@ its `secret.key`**.
 - **Poller / Web** — Mate's two internal components: the *poller* collects the data, the *web* shows
   the interface. For you as a user it's a detail: they work together.
 - **VIN** — the car's chassis number; it uniquely identifies your vehicle.
-- **Operation PIN** — the account's 4-digit PIN, needed to authorize remote commands.
+- **Operation PIN** — the car's 4-digit PIN, set on the car and needed to authorize remote commands.
 
 ---
 

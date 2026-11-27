@@ -1,0 +1,13 @@
+{
+  "image": "leapmotor-mate-cn:5.4.0-sync-review",
+  "network": "none",
+  "stages": [
+    "upgrade",
+    "recreated"
+  ],
+  "health_version": "5.4.0",
+  "language": "zh-TW preserved",
+  "old_data_retained": true,
+  "pin_key_retained": true,
+  "test_container_removed": true
+}

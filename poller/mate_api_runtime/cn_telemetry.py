@@ -216,7 +216,9 @@ def decode_status(payload, vehicle):
     values['charge_completed'] = False
     values['charge_limit_percent'] = None
     for corner, sid in {'fl': '2646', 'fr': '2653', 'rl': '2660', 'rr': '2667'}.items():
-        read('tire_' + corner + '_bar', sid, kind=lambda n: n / 100, default=0.0)
+        read('tire_' + corner + '_bar', sid, kind=lambda n: n / 100)
+    for corner, sid in {'fl': '2641', 'fr': '2648', 'rl': '2655', 'rr': '2662'}.items():
+        read('tire_' + corner + '_alarm', sid, kind=int)
     read('fuel_level_pct', '3235')
     read('fuel_liters', '3263', kind=lambda n: n / 1000)
     read('fuel_range_km', '3259')

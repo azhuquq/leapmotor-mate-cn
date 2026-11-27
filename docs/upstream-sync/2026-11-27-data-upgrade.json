@@ -1,0 +1,128 @@
+{
+  "source": "private local database COPY; no network; no live service restarted",
+  "integrity": "ok",
+  "tables": {
+    "addresses": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "charges": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [
+        "wb_probe_kwh",
+        "wb_probe_last_kwh",
+        "wb_probe_stuck_kwh"
+      ],
+      "changed_existing_rows": 0
+    },
+    "charging_places": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "command_log": {
+      "before_rows": 1,
+      "after_rows": 1,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "energy_counter_snapshots": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "events": {
+      "before_rows": 5,
+      "after_rows": 5,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "ha_samples": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "maintenance_logs": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [
+        "cost"
+      ],
+      "changed_existing_rows": 0
+    },
+    "offline_gaps": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "poll_log": {
+      "before_rows": 290,
+      "after_rows": 290,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "positions": {
+      "before_rows": 294,
+      "after_rows": 294,
+      "added_columns": [
+        "tire_fl_bar",
+        "tire_fr_bar",
+        "tire_rl_bar",
+        "tire_rr_bar",
+        "tire_fl_alarm",
+        "tire_fr_alarm",
+        "tire_rl_alarm",
+        "tire_rr_alarm"
+      ],
+      "changed_existing_rows": 0
+    },
+    "raw_signals_log": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "research_logbook": {
+      "before_rows": 0,
+      "after_rows": 0,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "settings": {
+      "before_rows": 65,
+      "after_rows": 66,
+      "added_columns": [],
+      "changed_existing_rows": 0,
+      "added_settings": 1,
+      "changed_settings": 0,
+      "deleted_settings": 0
+    },
+    "trip_positions": {
+      "before_rows": 42,
+      "after_rows": 42,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "trips": {
+      "before_rows": 1,
+      "after_rows": 1,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    },
+    "vehicles": {
+      "before_rows": 1,
+      "after_rows": 1,
+      "added_columns": [],
+      "changed_existing_rows": 0
+    }
+  },
+  "second_start_data_identical": true,
+  "key_unchanged": true
+}

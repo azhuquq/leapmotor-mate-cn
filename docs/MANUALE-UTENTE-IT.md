@@ -1,8 +1,356 @@
 # LeapMotor Mate — Manuale utente
 
-> **Versione di Mate:** v4.15.8 · **Lingua:** Italiano
+> **Versione di Mate:** v5.4.0 · **Lingua:** Italiano
 
-## Novità della 4.15.8
+## Novità della 5.4.0
+
+**Gli orari di una ricarica recuperata si possono correggere.** Una ricarica *✨ rilevata automaticamente*
+parte e finisce nelle due letture fra cui Mate l'ha vista, non quando l'auto ha caricato davvero. Ora
+*✏️ Correggi gli orari* sposta inizio e fine dentro quell'intervallo: energia e livelli della batteria
+restano quelli letti, e un costo calcolato da Mate segue il nuovo inizio (con una tariffa a fasce conta
+l'ora di inizio). Un costo scritto a mano resta com'è. L'intervallo si può solo restringere, così
+*Recupera ricariche perse* non la trova una seconda volta; per tornare all'intervallo intero si elimina
+la ricarica e la si recupera di nuovo (@matttiaromano, #501).
+
+**Sotto il grafico della temperatura, la pendenza di una retta.** In *Statistiche → Consumi vs temperatura
+esterna*, sotto la curva, una riga dice di quanti kWh/100 km cambia il consumo ogni 10 °C in
+più secondo una retta tracciata sugli stessi viaggi, con il suo r². Con un range extender c'è anche quella
+della benzina. Non va a Home Assistant (D#498).
+
+### Novità della 5.3.1
+
+**Il croato.** Mate parla croato: *Impostazioni → Lingua → Hrvatski* (grazie a @daleonidas).
+
+### Novità della 5.3.0
+
+**Il grafico della temperatura legge i viaggi giusti e dice quanto è sicura la sua curva.** In
+*Statistiche → Consumo contro temperatura esterna* ogni punto è un viaggio degli ultimi due anni con il
+consumo che mostra *Viaggi*, un viaggio unito è un punto solo e i viaggi lunghi pesano di più nella curva.
+Una fascia ombreggiata dice quanto è sicura la curva, e puntando il grafico si legge il valore della curva
+a quella temperatura con il suo ±. I quattro numeri che vanno a Home Assistant sono calcolati allo stesso
+modo (@arekm, #503).
+
+**I viaggi uniti di un'auto con range extender, e pagine più leggere.** Un viaggio unito con un
+rifornimento fra i suoi tratti non conta più il rifornimento come benzina bruciata, e uno in cui il
+generatore ha girato in un tratto qualsiasi non ha un consumo elettrico. *Panoramica*, *Viaggi* e la pagina
+di un viaggio leggono solo lo storico intorno ai viaggi che mostrano (@arekm, #502).
+
+**I viaggi nuovi tornano a essere completati dopo una notte intensa.** Quando il database era occupato
+nel momento sbagliato, temperatura esterna, dislivello e getEC dei viaggi nuovi si fermavano fino a un
+riavvio di Mate; ora li completa il giro successivo (@arekm, #504).
+
+### Novità della 5.2.1
+
+**Una ricarica dietro un dato fermo non viene più scartata.** Quando il cloud continua a servire lo stesso
+dato per giorni e intanto l'auto viene ricaricata, l'unica traccia è un livello della batteria che salta in
+una lettura. Mate misurava quella ricarica dalla lettura precedente, 30 secondi, e la scartava come
+impossibile. Ora parte dalla prima lettura del livello da cui è partita; inizio e durata sono un limite, non
+quelli veri. Anche *Impostazioni → Recupera ricariche perse* la trova, anche per una ricarica persa prima
+della 5.2.1 (@matttiaromano, #501).
+
+### Novità della 5.2.0
+
+**La tendenza del consumo con la temperatura è una curva, e i suoi numeri arrivano a Home Assistant.**
+In *Statistiche*, la tendenza di *Consumo contro temperatura esterna* era una retta; ora è una curva,
+a·T³ + b·T² + c·T + d, disegnata solo fra il viaggio più freddo e il più caldo. Sotto il grafico, la
+formula con i suoi quattro numeri e il suo r². Con MQTT acceso, gli stessi numeri diventano i sensori
+`Consumption Trend a`…`d`, e su un'auto con range extender `Fuel Trend a`…`d`, così un'automazione può
+trasformare una temperatura prevista in un consumo (@hristouzunovaz, D#498).
+
+### Novità della 5.1.1
+
+**I viaggi registrati prima della 3.10.6 restituiscono i km di un silenzio.** Fino alla 3.10.6, un
+viaggio che si apriva dopo un silenzio del cloud prendeva la partenza dall'ultima lettura prima del
+silenzio, e così si portava dietro i km guidati durante il silenzio: un viaggio di 1 km poteva segnarne
+59. Al primo avvio la 5.1.1 riscrive quei viaggi dalla lettura che li ha aperti, e sposta i km in
+*Chilometri misurati fuori collegamento*, in *Statistiche* e sopra il calendario dei *Viaggi*. I viaggi
+registrati con la 3.10.6 o dopo non cambiano (@adoewa, #497).
+
+### Novità della 5.1.0
+
+**Un registro nella pagina Manutenzione.** Annota con la sua data quello che succede all'auto: cambi
+gomme, modifiche, guasti, danni, ognuno con una nota e, se vuoi, quanto è costato. Se lasci vuoto il
+contachilometri, Mate usa quello che ha letto quel giorno. Anche un intervento del programma ufficiale
+prende un costo (D#493, @DanielBrol).
+
+**Gomme estive e invernali dal registro.** I chilometri di ogni treno partono dal giorno in cui la sua voce
+dice che è stato montato, quindi il cambio può cadere in un giorno diverso ogni anno, e puoi aggiungere i
+chilometri che ogni treno aveva fatto prima di Mate. I due giorni fissi della 5.0.0 diventano una volta
+sola una voce per ogni cambio, con gli stessi totali, e la loro carta in *Impostazioni* non c'è più (D#493).
+
+**L'ultima ricarica al 100%.** La pagina *Salute batteria* mostra l'ultima ricarica arrivata al 100%, il
+giorno, quanto tempo fa e dove. Una batteria LFP va caricata al 100% ogni tanto, perché le celle si
+bilancino e il livello di carica sia misurato bene; la pagina non fissa un limite suo (D#490, @Tommy73LMB05).
+
+### Novità della 5.0.1
+
+**Un comando da Home Assistant non perde più il PIN dell'auto.** Un comando mandato via MQTT mentre Mate
+salvava una lettura poteva partire senza PIN ed essere rifiutato con «Vehicle PIN is missing», e la
+lettura di quel momento andava persa («Frame processing failed»). Ora il poller di Mate usa il suo
+database da un thread alla volta (@chengler, #495).
+
+### Novità della 5.0.0
+
+**Gomme estive e invernali, ogni treno con i suoi chilometri.** Spenta finché non la accendi in
+*Impostazioni → 🛞 Gomme estive e invernali*. Scegli il giorno di montaggio delle invernali e quello delle
+estive; i giorni si ripetono ogni anno. La pagina *Manutenzione* mostra allora il treno montato, i
+chilometri di questa stagione e il totale di ciascun treno, contati dal contachilometri che Mate ha già,
+stagioni passate comprese (D#493, @DanielBrol).
+
+### Novità della 4.31.0
+
+**Una password tagliata dall'app Leapmotor viene nominata.** L'app può tenere solo i primi 16 caratteri di
+una password, senza avvisare. Quando il cloud ne rifiuta una più lunga, la configurazione guidata dice di
+provare i suoi primi 16 caratteri (#492, @arekm; #482).
+
+**Le righe della Panoramica si chiudono pari.** Su un'auto che non manda alcune temperature, una riga
+restava mezza vuota: una T03 mostrava *Target A/C* da solo nella metà sinistra (#491, @matttiaromano).
+
+### Novità della 4.30.0
+
+**Home Assistant imposta la temperatura del clima.** Un nuovo numero scrivibile, *AC Target Temperature*
+(18–32 °C), imposta la temperatura come la pagina *Comandi*: il clima tiene modo, ventola e ricircolo. Il
+sensore *AC Target* resta com'era (#489, @michapr).
+
+### Novità della 4.29.0
+
+**La Panoramica avvisa di una gomma.** Sotto le temperature della *Panoramica*, la riga *Pressione gomme*
+dà la parola della gomma peggiore: *Troppo bassa* o *Troppo alta* in rosso, *Bassa* o *Alta* in arancione,
+*Normale* in verde, con la stessa regola delle gomme di *Veicolo* (l'allarme dell'auto o meno di 2,0 bar è
+troppo bassa). È un collegamento a *Veicolo*; puntando un avviso compaiono le gomme (D#483, @michapr).
+
+**Due viaggi con l'auto senza segnale in mezzo restano due accensioni.** Un'auto parcheggiata dove non
+raggiunge il cloud non unisce più il viaggio prima e quello dopo in uno, quindi il viaggio non chiede più
+di essere unito prima di *Converti con dati ufficiali* (#487, @michapr).
+
+**Il pacchetto di diagnostica porta le letture delle ricariche** delle ultime 10 AC e 10 DC, e dice su
+quale orologio è ogni suo orario (#485, @arekm).
+
+### Novità della 4.28.0
+
+**La pressione di ogni gomma giorno per giorno.** Sotto le gomme di *Veicolo*, il grafico *Pressione gomme
+per giorno* disegna la pressione minima (continua) e massima (tratteggiata) di ogni gomma per ogni giorno,
+su 30 o 90 giorni, con sotto la temperatura esterna degli stessi giorni se l'hai attivata. Puntando un
+giorno compare per ogni gomma la minima – massima. Un giorno senza letture è un buco. Lo storico parte con
+questo aggiornamento (D#483, @michapr).
+
+**Il carburante di un'auto con range extender in Home Assistant.** Tre sensori MQTT: `Fuel Level` (%),
+`Fuel Volume` (L) e `Fuel Range` (km). Un serbatoio vuoto vale 0; un'auto solo elettrica non li riceve
+(#481, @michapr).
+
+**Quando si prevede che finisca la ricarica.** In Panoramica, puntando o toccando la carta della ricarica
+compare *Fine ca. 14:40*, l'ora che *Ricariche* mostra sotto *Tempo rimanente*, dove ora c'è scritto anche
+lì *Fine ca.*. Di @arekm (#484).
+
+### Novità della 4.27.1
+
+**Una pagina che si ricarica da sola lascia stare quello che hai scritto.** Una nota o una cifra scritta e
+non salvata ora trattiene la ricarica della pagina finché non la salvi o non la togli (*Annulla*, dove c'è): una nota del
+viaggio scritta e lasciata con un clic altrove spariva alla ricarica successiva. Di @arekm (#479).
+
+**La fine di una ricarica ricarica Ricariche quando non la stai usando.** Prima si ricaricava subito,
+qualunque cosa stessi facendo, e tornava in cima. Ora aspetta come Viaggi alla fine di un viaggio, tiene il
+tuo punto, ed elenca anche una ricarica seguita dalla successiva fra due aggiornamenti (#479).
+
+**Una ricarica inserita a mano vuole una data che Mate sappia leggere.** La casella della data di un browser
+accetta un anno di cinque cifre: una ricarica passata inserita con l'anno 72026 veniva salvata, restava
+l'*Ultima ricarica* della Panoramica per sempre, con SoC 0% → 0%, e nella pagina *Ricariche* non si trovava.
+Ora Mate rifiuta una data che non sa leggere, la Panoramica mostra «—» per una SoC che la ricarica non porta,
+e una ricarica già salvata con una data così è elencata sopra il calendario di *Ricariche*, per correggerne la
+data con ✏️ *Modifica* o cancellarla (@ebagnoli, #451).
+
+### Novità della 4.27.0
+
+**Il viaggio in corso è nella pagina Viaggi, in diretta.** Mentre l'auto viaggia, in cima a *Viaggi* c'è
+*🚗 In guida*: LIVE o l'età dell'ultima lettura, quando è iniziato il viaggio, la strada fatta finora, la
+percentuale di carica all'inizio e adesso, e il grafico *Dati del viaggio*, aggiornati ogni 30 secondi.
+Quando il viaggio finisce, la pagina si ricarica una volta per mostrarlo fra i viaggi, quando non la stai
+usando, e tiene il tuo punto. Di @arekm (#477).
+
+**Una pagina che si ricarica da sola tiene il tuo punto.** *Salute batteria*, un viaggio e le altre pagine
+che si ricaricano da sole ogni 30 secondi tornano dove stavi leggendo, anche quando una parte della pagina
+arriva un momento dopo (#476).
+
+### Novità della 4.26.0
+
+**La «←» riporta da dove sei venuto.** In Home Assistant non c'è il pulsante Indietro, quindi la «←» in
+cima a una pagina è la strada del ritorno. Un viaggio aperto dai *Viaggi recenti* della Panoramica, dai
+*Percorsi simili* o da una ricerca in Viaggi ora ha «← Panoramica», «← Percorsi simili» o «← Viaggi», e
+riporta lì con la riga del viaggio a schermo. Una ricarica aperta da un viaggio (⚡ ▸ *Vedi ricarica →*)
+riporta al viaggio, e una aperta da un luogo di ricarica sulla Mappa riporta alla Mappa con lo stesso
+centro e lo stesso zoom. Le frecce ‹ › tengono la strada del ritorno, e la Mappa tiene la sua vista quando
+ricarichi. Di @arekm (#473, #474).
+
+**La ricerca in Viaggi resta nell'indirizzo.** Ricaricando ritrovi la stessa ricerca, e in Viaggi e in
+Ricariche *Torna al calendario* apre il mese che il calendario mostrava, non quello su cui avevi aperto la
+pagina.
+
+**Ogni auto ha il suo riferimento SoH.** Con due auto, la salute batteria le misurava entrambe su un solo
+riferimento, e impostarlo per un'auto cambiava anche quello dell'altra (#472). Apri *Impostazioni →
+Batteria* con ogni auto selezionata e controlla il suo *Riferimento SoH*.
+
+### Novità della 4.25.0
+
+**Un rilascio di sicurezza: aggiorna.** Una pagina web di un altro sito poteva comandare un Mate senza
+password, porte comprese. Senza password, ora Mate risponde solo ai nomi che usa una rete di casa: un
+indirizzo IP, `localhost`, un nome senza punti, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`. Se lo
+apri con un nome pubblico (un nome DuckDNS, un nome Tailscale `*.ts.net`, un reverse proxy che passa il suo
+nome pubblico), imposta una password in *Impostazioni → Accesso*, aprendo Mate con il suo indirizzo di rete,
+oppure scrivi quel nome in `MATE_ALLOWED_HOSTS` (vedi `.env.example`).
+
+**Anche in questo rilascio.** Con una password, dopo l'aggiornamento rifai l'accesso una volta, e cambiare la
+password fa uscire tutti gli altri. Il token di Home Assistant va a un nome pubblico solo su una connessione
+verificata. Come add-on il pannello non cambia; la porta 4000, se l'hai aperta, rifiuta form e frame di altri
+siti. L'app desktop ha bisogno di MateDesktop 1.2.3 per questo rilascio; la 1.2.2 chiede di scaricare
+un'app più recente.
+
+### Novità della 4.24.0
+
+**Il ceco.** Mate parla ceco: *Impostazioni → Lingua → Čeština* (grazie a @petrw1).
+
+**Un interruttore per l'altimetria.** *Impostazioni → Valori predefiniti viaggio → Altimetria e temperatura del
+viaggio*: togli la spunta e Mate non manda più da solo la traccia GPS di un viaggio finito a Open-Meteo. Il
+pulsante **Calcola dislivello** nella pagina di un viaggio cerca comunque quel viaggio quando lo premi.
+
+**Un'auto ferma resta dove ha parcheggiato.** Un'auto ferma a ovest di Greenwich o a sud dell'equatore non
+salta più nel punto speculare quando le letture GPS perdono il meno. La *Location* di Home Assistant tiene
+l'ultima posizione buona quando l'auto non ne ha, e un'auto che non manda la pressione delle gomme la mostra
+come sconosciuta, non 0 bar.
+
+**La ricarica, letta nel verso giusto.** Un'auto col cavo attaccato che alimenta il clima dalla batteria non
+risulta più in ricarica, e una ricarica messa in pausa dall'auto resta una sola.
+
+### Novità della 4.23.0
+
+**La Mappa mostra dove si trova l'auto.** Nella Mappa un segnaposto dà ora l'ultima posizione nota
+dell'auto, come nella Panoramica, e segue l'auto finché la pagina è aperta; la vista della mappa resta dove
+l'hai messa. Per nasconderlo togli la spunta a *Ultima posizione nota* nella riga sotto la mappa: la
+pagina ricorda la scelta.
+
+### Novità della 4.22.0
+
+**I Viaggi recenti sono le righe di Viaggi.** Nella Panoramica, *Viaggi recenti* mostra ora ogni viaggio
+come la sua riga in Viaggi, senza il percorso: da dove è partito e dove è arrivato, la batteria prima e
+dopo, l'energia consumata e da dove viene quella cifra (per esempio *Misurata dall'auto*). La Panoramica
+non dà il costo; le liste di Viaggi sì. In Viaggi ogni riga dà ora i suoi kWh fra la distanza e il
+consumo, e una riga accanto alla barra laterale tiene interi i luoghi di partenza e di arrivo; un luogo
+ancora tagliato dà il nome intero quando ci passi sopra col mouse.
+
+### Novità della 4.21.0
+
+**Le ricariche gratuite hanno la loro fetta in Casa vs Pubblica.** Nelle Ricariche, una ricarica di
+tipo **Gratis** contava come Pubblica; ora ha una sua fetta verde lime e una mattonella **🆓 Gratis**,
+che compare solo se ne hai almeno una. Una ricarica di Casa segnata gratuita (per esempio col solare)
+resta sotto Casa. La legenda dei due anelli è più compatta: ogni voce dà le sue sessioni e il nome, e
+sotto i kWh e la quota.
+
+### Novità della 4.20.0
+
+**Viaggi dice l'energia consumata.** Un quinto riquadro in Viaggi dà l'energia consumata da tutti i tuoi
+viaggi, la stessa cifra dell'*Energia consumata* delle Statistiche, e anche l'intestazione di un giorno, la
+striscia del mese e il totale di una ricerca danno i loro kWh. La scheda dell'energia aggiunge il *Consumo
+totale* dell'auto accanto alla distanza e alla media; i due possono differire di poco, perché il cloud
+conta per data e Mate per i viaggi che ha registrato. I mesi e gli anni delle Statistiche ora sommano
+esattamente all'*Energia consumata*.
+
+### Novità della 4.19.0
+
+**La ventola ha le velocità dell'auto.** Il cloud dice a Mate quante velocità ha la ventola del clima
+da remoto di ogni auto. Su un'auto che ne ha più di sette, come una B10 con nove, la pagina Veicolo dice
+«x / 9», il cursore della ventola in Comandi va da 1 a 9 e il numero *Fan Level* di Home Assistant arriva a
+9. Le altre auto restano da 1 a 7.
+
+**Il recupero di un viaggio conta il tempo che ogni lettura rappresenta.** Ogni lettura in frenata ora vale
+il tempo dalla lettura precedente dell'auto, non l'intervallo di poll, quindi i viaggi nuovi dicono più
+recupero di prima. I viaggi registrati prima tengono il loro valore.
+
+### Novità della 4.18.1
+
+**Il tracker Posizione in Home Assistant segue la zona dell'auto.** Il device_tracker `Location`
+che Mate pubblica su MQTT diceva `home` ogni volta che l'auto mandava una posizione, ovunque fosse.
+Ora dice la zona delle coordinate dell'auto: `home`, `not_home` o il nome di un'altra tua zona; senza
+GPS dice `not_home`. Un'automazione che lo usava per sapere se l'auto è a casa ora vede l'auto uscire.
+
+### Novità della 4.18.0
+
+**Ogni auto ha il suo PIN operativo.** In *Impostazioni → Veicolo* il modulo dice «PIN operativo di
+questa auto», con il modello e la fine del VIN; con due auto si sceglie prima l'auto (non c'è più
+«Tutte le auto»). Il PIN scritto lì è quello che usano i comandi: con una sola auto poteva essere
+salvato dove i comandi non lo leggevano. Un PIN salvato da una versione precedente diventa quello
+dell'auto all'avvio di Mate. Un comando a un'auto senza PIN non parte, e la pagina dice di impostarlo
+in Impostazioni → Veicolo. Se dopo l'aggiornamento un comando viene rifiutato per PIN sbagliato,
+riscrivi il PIN lì una volta.
+
+### Novità della 4.17.0
+
+**Il pannello della ricarica dice quando finisce.** Nella pagina *Ricariche*, *Stato di carica* mostra
+sotto il tempo rimanente l'ora in cui la ricarica finisce, es. «Fine ca. 14:30», con il giorno quando
+finisce in un altro. Conta da quando l'auto ha misurato i minuti rimanenti, quindi una lettura di qualche
+minuto fa non la sposta.
+
+### Novità della 4.16.3
+
+**Una wallbox che ha cambiato casa viene ritrovata.** Mate impara dov'è la tua wallbox dalle ricariche che
+ha misurato, e dà il contatore della wallbox solo alle ricariche lì. Dopo un trasloco le ricariche di casa
+restavano senza. Ora una ricarica lontana da quel posto legge comunque il contatore e lo tiene se è salito
+insieme all'auto (più di 2 kWh, mai fermo mentre l'auto caricava); quelle ricariche spostano il posto alla
+casa nuova. Le ricariche registrate prima di questa versione non cambiano.
+
+### Novità della 4.16.2
+
+**La mappa prende lo schermo su cui è.** La mappa della pagina *Mappa* ora occupa tutta la larghezza della
+pagina e finisce dove la riga sotto, con *Viaggi mostrati* e *Colonnine mostrate*, sta ancora sullo
+schermo: più grande su un monitor grande, più piccola su un portatile, almeno 400 px. Segue la finestra
+quando la ridimensioni.
+
+### Novità della 4.16.1
+
+**La T03 mostra il suo traguardo di ricarica.** Sulla T03 la carta *Traguardo ricarica programmata* della
+pagina Ricariche restava vuota subito dopo un salvataggio, e il *Charge Limit* di Home Assistant restava
+sconosciuto: lo stato dell'auto non lo porta. Ora Mate lo legge dal piano di ricarica dell'auto, che lo porta.
+
+### Novità della 4.16.0
+
+**La mappa della Panoramica disegna l'ultimo viaggio di oggi.** Sotto il pallino dell'auto, la mappa
+*Ultima posizione nota* ora disegna il percorso dell'ultimo viaggio dell'auto: quello in corso mentre guidi,
+e quello finito oggi per il resto della giornata. Le linee sono quelle della pagina del viaggio. Dopo
+mezzanotte la mappa torna pulita.
+
+**I comandi non vengono più rifiutati per un orologio del computer indietro di qualche secondo.** Prima di
+un comando Mate guarda l'ora dell'ultima lettura dell'auto, e la rifiutava se era successiva all'orologio
+del computer (*Command not sent: state_timestamp_invalid*). Ora una lettura fino a un minuto avanti vale
+come attuale.
+
+### Novità della 4.15.12
+
+**Sulla T03 la carta del traguardo di ricarica dice cos'è.** La carta *Traguardo ricarica programmata*
+della pagina Ricariche diceva che il suo numero non è il limite massimo dell'app dell'auto. Sulla T03 lo
+è: un proprietario ha impostato 92 % e poi 90 % dalla carta, e l'app ufficiale li ha mostrati come limite
+massimo di ricarica. Su un'auto con la programmazione semplice, come la T03, ora la carta lo dice.
+
+### Novità della 4.15.11
+
+**Il contachilometri su MQTT non scende più a 0 km.** Quando una lettura dell'auto non porta il
+contachilometri, come alcune della T03, Mate pubblicava 0 km su MQTT (il sensore del contachilometri in
+Home Assistant) e mandava 0 km ad ABRP. Ora una lettura così non pubblica niente per il contachilometri:
+il sensore tiene l'ultimo valore, come faceva già l'autonomia, e ABRP non riceve il contachilometri.
+
+### Novità della 4.15.10
+
+**La Salute batteria non legge più una temperatura mancante come 0 °C.** Su un'auto che non manda la
+temperatura della batteria, come la T03, una lettura fatta dalla pagina web durante una ricarica salvava
+0 °C, e la *Salute batteria* lasciava fuori la ricarica come fatta al freddo. Ora una temperatura
+mancante resta vuota, e gli 0 °C già salvati da un'auto così non vengono più presi come letture.
+
+### Novità della 4.15.9
+
+**La Salute batteria conta le ricariche della T03.** La T03 manda il livello della batteria a punti
+interi, e la pagina *Salute batteria* prendeva ogni punto guadagnato in una ricarica AC per una
+ricalibrazione della batteria, lasciando fuori la ricarica: la pagina restava senza cifra. Ora un punto
+alla volta è una salita normale; un salto vero lascia ancora fuori la ricarica. Contano anche le ricariche
+già registrate.
+
+### Novità della 4.15.8
 
 **La procedura guidata offre i pacchi del range extender.** Una C10 o una B10 con range extender può
 scegliere il suo pacco (*28.4 kWh — REEV* o *18.8 kWh — REEV*) sotto *Pacco batteria* nella procedura
@@ -845,7 +1193,7 @@ Per configurare Mate ti servono tre cose:
    Leapmotor (`app.crt` + `app.key`) per il login — è **uguale per tutti** (è quello dell'app, non del
    tuo account). È incluso in Mate e si installa da solo al primo avvio: non ti viene mai chiesto.
 
-3. **Email, password e PIN operativo dell'account.** Il **PIN a 4 cifre** è quello che usi anche
+3. **Email, password e PIN operativo dell'auto.** Il **PIN a 4 cifre** è quello che usi anche
    nell'app ufficiale per autorizzare i comandi a distanza (chiusura, clima…).
 
 > 💡 Vuoi solo dare un'occhiata senza configurare niente? Salta tutto e usa la **[modalità demo](#9-modalità-demo)**:
@@ -974,6 +1322,7 @@ In base al modello:
 > Mate la fotografa la prima volta che salvi la capacità e poi non la tocca più, così adottare un
 > valore misurato (e già invecchiato) non può riportare la salute a ~100 % nascondendo
 > l'invecchiamento. Se è stata registrata sbagliata, la salute può superare il 100 %: si corregge lì.
+> Con più auto, ogni auto ha il suo: il campo mostra quello dell'auto selezionata.
 
 > **Se un valore predefinito di Mate è stato smentito 🆕**, Impostazioni → Batteria lo dice sul
 > posto e offre la cifra corretta con un pulsante — non riscrive mai il numero alle tue spalle.
@@ -1009,7 +1358,8 @@ d'accesso* — quello chiude la sessione della password, niente altro. Senza pas
 non c'è niente da chiudere.
 
 **Per cambiare il PIN dell'auto 🆕** — se lo cambi sull'auto, non serve sganciare niente: vai su
-**Impostazioni → Veicolo**, sotto l'indirizzo dell'account trovi **PIN operativo**. Si digita due
+**Impostazioni → Veicolo**, sotto l'indirizzo dell'account trovi **PIN operativo di questa auto**.
+Ogni auto ha il suo PIN, quello impostato sull'auto; con due auto, scegli prima l'auto. Si digita due
 volte, con l'occhio per rileggerlo, e vale subito — sia per i comandi dalla pagina sia per quelli
 che arrivano da Home Assistant. Domanda di **@alextchao** (#225).
 
@@ -1037,7 +1387,7 @@ torna al mese corrente. **Salute batteria** fa lo stesso con le viste scelte nei
 
 **Lingua, valuta e unità** si cambiano da *Impostazioni → 🌍 Lingua e valuta*:
 
-- **Lingua:** Italiano, English, Français, Deutsch, Polski, Nederlands, Português, Español.
+- **Lingua:** Italiano, English, Français, Deutsch, Polski, Nederlands, Português, Español, Čeština, Hrvatski.
   *(Un manuale scritto come questo esiste in italiano, inglese, francese, tedesco e spagnolo.)*
 - **Valuta:** per i costi (€, £, …).
 - **Unità:** metriche (km, °C) o imperiali UK/US (miglia, °F). I dati restano sempre salvati in
@@ -1075,6 +1425,9 @@ dall'auto (cambio in P + un dispositivo collegato), non da Mate. È accurato da 
 
 Più in basso trovi mini-statistiche e un **indicatore di "reattività auto"** (un pallino
 🟢/🟡/🔴, ⚪ se non ci sono dati): riassume quanto l'auto ha risposto agli ultimi comandi inviati.
+
+La mappa **Ultima posizione nota** disegna anche il tracciato GPS dell'ultimo viaggio di oggi — mentre
+guidi, quello del viaggio in corso — come nel dettaglio del viaggio.
 
 **L'ultima ricarica dice tutte e due le cose 🆕** — il riquadro **Ultima ricarica** mostra in primo piano
 la stessa cifra della riga di quella ricarica in Ricariche: a casa, con un contatore wallbox, i kWh
@@ -1183,8 +1536,8 @@ soddisfatta **a ogni aggiornamento, tutto l'anno**.
   (riga *Dislivello + / −*; la sua ⓘ dice come sono calcolati), e la temperatura **più alta e più
   bassa** del viaggio — non una media, così una salita da fondovalle a passo mostra il calo vero.
   Insieme spiegano buona parte del consumo di una guidata: la salita costa energia, il freddo costa
-  autonomia. I viaggi registrati prima che esistesse hanno un pulsante **Calcola altimetria**, e
-  tutto si può spegnere dalle Impostazioni.
+  autonomia. I viaggi registrati prima che esistesse hanno un pulsante **Calcola dislivello**, e
+  la ricerca automatica si spegne in *Impostazioni → Valori predefiniti viaggio → Altimetria e temperatura del viaggio*.
 - **In movimento e fermo 🆕.** Sotto la durata, il dettaglio la divide nel tempo in movimento e nel
   tempo da fermi durante il viaggio (semafori, code), dalle letture di Mate prese a pochi secondi
   l'una dall'altra. Una sosta tra viaggi uniti non conta per nessuno dei due, e un buco nelle
@@ -1216,7 +1569,9 @@ soddisfatta **a ogni aggiornamento, tutto l'anno**.
   linea. Ogni voce della legenda accende e spegne la sua linea — un quadratino vuoto indica una
   linea spenta — e una fascia con tutte le linee spente si chiude. Tutte le linee partono accese; la
   scelta viene ricordata nel browser per tutti i viaggi. Il riquadro si apre con l'ora del giorno,
-  al secondo, e il minuto del viaggio.
+  al secondo, e il minuto del viaggio. Mentre l'auto viaggia, lo stesso grafico compare in diretta in
+  cima alla pagina Viaggi, sotto *🚗 In guida*: dice quando è iniziato il viaggio e da quale percentuale,
+  quanta strada ha fatto finora l'auto, e cresce a ogni interrogazione.
 - **Consumi ufficiali dal cloud 🆕** — quando disponibili, **consumo, efficienza e costo** del viaggio
   vengono dal **dato ufficiale Leapmotor** (la vera ripartizione **guida / A·C / altro**) invece della
   sola stima dal calo di batteria. Subito dopo il viaggio vedi la stima con l'avviso **⏳ provvisorio**;
@@ -1310,10 +1665,11 @@ Il tipo è classificato con un'etichetta:
   rimette il valore calcolato. Le ricariche che avevi scritto così prima della v3.16.0 si leggono di
   nuovo **✎ Manuale**, con il loro prezzo: non c'è niente da fare.
 - **Casa vs Pubblica 🆕** — accanto alla card *Distribuzione AC vs DC* ce n'è una seconda:
-  **Casa**, **Pubblica**, **✎ Manuale** e **Da confermare**, con una ciambella e una mattonella
-  ciascuna (le ultime due solo se ce ne sono). Fanno sempre il numero di ricariche scritto sopra,
-  così una ricarica col prezzo scritto a mano non finisce fra le pubbliche, e una che aspetta il suo
-  tipo si vede come tale.
+  **Casa**, **Pubblica**, **🆓 Gratis**, **✎ Manuale** e **Da confermare**, con una ciambella e una
+  mattonella ciascuna (le ultime tre solo se ce ne sono). Fanno sempre il numero di ricariche scritto
+  sopra, così una ricarica col prezzo scritto a mano non finisce fra le pubbliche, nemmeno una di tipo
+  Gratis, e una che aspetta il suo tipo si vede come tale. Una ricarica di Casa segnata gratuita resta
+  sotto Casa.
 - **Una ricarica abbandonata dal cloud finisce quando passava corrente l'ultima volta 🆕** (#289) —
   se l'auto si addormenta col cavo attaccato, il cloud non lo dice: continua a ripetere l'ultima
   notizia che ha, e lì dentro il cavo risulta ancora collegato. Prima la ricarica restava aperta
@@ -1460,9 +1816,16 @@ Veicolo"** 🆕 — energia totale, chilometraggio e media kWh/100 km **da conse
 dell'auto, quindi non intaccata dai rari viaggi che il cloud non registra), con una barra
 **Guida / A·C / Altro / Da-fermo**.
 
-**Consumo contro temperatura esterna 🆕** — un punto per ogni viaggio concluso: il suo consumo contro
-la temperatura dell'aria in cui è stato guidato, con una linea di tendenza tratteggiata a
-attraversarli. Risponde alla domanda che si fa ogni proprietario quando arriva il freddo — *quanto
+**Consumo contro temperatura esterna 🆕** — un punto per ogni viaggio di almeno 3 km degli ultimi due anni (un viaggio unito è un punto solo):
+il suo consumo, quello che mostra *Viaggi*, contro la temperatura dell'aria in cui è stato guidato, con una curva di tendenza tratteggiata a
+attraversarli, a·T³ + b·T² + c·T + d con T in °C, disegnata fra il viaggio più freddo e il più caldo.
+Sotto il grafico ci sono i suoi quattro numeri e il suo r² (quanto della dispersione la curva spiega,
+da 0 a 1); compare con almeno 8 viaggi su almeno 4 temperature diverse. I viaggi lunghi pesano di più, così la
+curva si legge come l'energia per chilometro davvero percorso. La fascia ombreggiata intorno dice
+quanto è sicura la curva: con il 95 % di confidenza la tendenza vera è al suo interno, stretta dove i
+viaggi sono stati molti. Puntando il grafico, un riquadro dà la temperatura sotto il cursore e il
+valore della curva lì, con il suo ±; su un punto elenca anche i suoi viaggi. Su un'auto con range
+extender la benzina ha la sua. Risponde alla domanda che si fa ogni proprietario quando arriva il freddo — *quanto
 beve davvero la MIA auto a 5 °C?* — partendo dalla tua guida invece che da una tabella. Serve che i
 viaggi portino una temperatura esterna (vedi *Panoramica*); su dati realistici il disegno si legge
 dopo circa un mese di guida.
@@ -1576,7 +1939,7 @@ vuoto te lo dice, invece di mostrarti in silenzio quello prima. E su un mese sen
 compare nessun confronto col mese precedente — ogni casella direbbe −100 %, che descrive il
 calendario e non la tua guida.
 
-**Da dove viene il consumo, e quando Mate lo scavalca.** *Consumo medio* ed *Energia consumata*
+**Da dove viene il consumo, e quando Mate lo scavalca.** *Consumo medio* e *Consumo totale*
 normalmente sono il totale ufficiale dell'auto per quel mese. Quel totale è completo quanto lo è
 stato il collegamento della tua auto: se durante un viaggio l'auto non è riuscita a parlare col
 cloud, quel viaggio lì dentro non c'è. Quando il totale torna molto sotto la somma dei viaggi che
@@ -1623,6 +1986,11 @@ compare affatto, perché una misura non ha dispersione da riportare.
 È una **stima**, quindi — non una diagnosi di laboratorio — e si assesta man mano che le ricariche si
 accumulano.
 
+**Ultima ricarica al 100%.** In cima alla pagina: l'ultima ricarica chiusa arrivata al 100%, con il
+giorno, quanti giorni fa e dove, nominata come in *Ricariche*. Una ricarica fermata al 99,9% non conta.
+Una batteria LFP va caricata al 100% ogni tanto, perché le celle si bilancino e il livello di carica sia
+misurato bene; quanto spesso lo decidi tu, e la pagina non fissa una soglia (D#490, @Tommy73LMB05).
+
 ### Manutenzione
 **(menu: Manutenzione)** — Le **scadenze di manutenzione** della tua auto, basate sul **programma
 ufficiale del tuo modello** (T03, B05, B10, C10). Per ogni intervento (es. tagliando, liquido freni,
@@ -1637,6 +2005,18 @@ il **tempo**, perché scade ciò che arriva prima.
 - La **data di immatricolazione/consegna è modificabile**: clicca la **✏️** accanto alla data
   impostata per correggere un errore (il nuovo valore sovrascrive il precedente).
 - Le distanze rispettano l'unità scelta (km o miglia).
+- **Registro** (D#493, @DanielBrol): **+ Aggiungi** registra una voce con tipo (gomme invernali montate,
+  gomme estive montate, modifica, guasto, danno, altro), data, contachilometri, costo e nota. Un
+  contachilometri lasciato vuoto è quello che Mate ha letto quel giorno, o l'ultimo giorno prima con una
+  lettura. 🗑 cancella una voce. Anche un intervento del programma prende un costo. I costi restano in
+  questa pagina: non vengono sommati ai costi delle ricariche.
+- **Gomme estive e invernali**: la carta 🛞 compare con la prima voce gomme del registro. Mostra il treno
+  montato, i chilometri di questa stagione e il totale di ogni treno. Ogni treno conta dal giorno in cui
+  la sua voce dice che è stato montato; prima della prima voce nessun treno è noto e non si conta niente.
+  I giorni senza lettura non vengono stimati: la distanza passa al giorno della lettura successiva.
+  *Km fatti da ogni treno prima di Mate* aggiunge quello che ogni treno aveva fatto prima della prima
+  lettura di Mate. Se usavi i due giorni fissi della 5.0.0, Mate li ha trasformati una volta in voci, con
+  gli stessi totali.
 
 ### Comandi
 **(menu: Comandi)** — I **comandi a distanza**. Da qui puoi:
@@ -1721,7 +2101,7 @@ nelle vicinanze**. La pagina ha tre parti:
 modello (carica, autonomia, temperatura interna, marcia, porte, finestrini, pneumatici, blocchi,
 stato di ricarica…). Mate mostra **solo ciò che la tua auto riporta davvero** (alcuni modelli non
 espongono certi dati). Tra questi ora ci sono anche i dati del clima letti dall'auto: **livello
-ventola** (1–7), **ricircolo aria** (aria fresca / ricircolo) e **modalità clima** attiva (AUTO /
+ventola** (1–7, o di più se l'auto ne ha di più, ad es. 1–9), **ricircolo aria** (aria fresca / ricircolo) e **modalità clima** attiva (AUTO /
 Raffreddamento / Riscaldamento / Ventilazione). Il riquadro del parasole dice quanto è aperto — «40%»
 sopra «Aperto» —, come fanno quelli dei finestrini.
 
@@ -1801,9 +2181,10 @@ volta. È divisa in tre colonne.
   mai in chiaro. **Se la perdi** non resti fuori per sempre: il campo *Nuova password* non chiede
   quella vecchia, quindi da un qualsiasi dispositivo ancora collegato ne imposti una nuova. Se non
   c'è più nessun dispositivo dentro, la variabile d'ambiente `MATE_AUTH_PASSWORD` scavalca quella
-  salvata. ⚠️ La *scavalca*, non la sostituisce: l'impronta dimenticata resta nel database sotto,
-  quindi una volta rientrato imposta una password nuova (o toglila) da **Impostazioni → Accesso** e
-  solo dopo rimuovi la variabile — se la togli prima, torna a comandare quella che avevi perso.
+  salvata: aggiungila al container con una password nuova, riavvialo ed entra con quella. ⚠️ La
+  *scavalca*, non la sostituisce: l'impronta dimenticata resta nel database sotto, e finché la
+  variabile c'è **Impostazioni → Accesso** non può né cambiarla né toglierla. Quindi tieni la
+  variabile: da lì in poi la password è lei, e se la togli torna a comandare quella che avevi perso.
 
 - **Database** — dimensione del DB e **conservazione posizioni** (retention): puoi tenere i punti
   GPS "per sempre" (predefinito) o cancellare quelli più vecchi di 6/12/18/24 mesi per risparmiare
@@ -1886,12 +2267,12 @@ Invia la telemetria dell'auto ad ABRP per la pianificazione viaggi in tempo real
 Pubblica lo stato dell'auto (carica, autonomia, posizione, porte, stato ricarica…) come **entità in
 Home Assistant**, con **auto-discovery**. Tra queste, tre nuove entità V2L **di sola lettura**:
 **`V2L Active`** (binary sensor), **`V2L Power`** (W) e **`V2L Session Energy`** (Wh), un binary sensor **`Ready`** che si accende appena l'auto viene accesa — prima che si muova, cioè finché un'automazione fa ancora in tempo ad agire, più i dati del
-clima letti dall'auto: il **Livello ventola** (`number` scrivibile, 1–7), il **Ricircolo**
+clima letti dall'auto: il **Livello ventola** (`number` scrivibile, 1–7, o di più se l'auto ne ha di più, ad es. 1–9), il **Ricircolo**
 (interruttore scrivibile) e la **Modalità clima** (sensore: AUTO / Raffreddamento / Riscaldamento /
 Ventilazione). Puoi anche **comandare** l'auto dalle entità di HA — incluso un **limite di carica**
 (`number` scrivibile) per impostare il SoC target e una **Programmazione ricarica** (`text`
 scrivibile) che accetta un piano in JSON pensato per le automazioni (`{"start":"23:00","soc":90}` —
-ogni campo è opzionale, e quello che ometti resta com'è). Un sensore **`Sunshade Position`** dice quanto è aperto il parasole, in % (0 = chiuso); il binary sensor **`Sunshade`** resta com'era, acceso a qualsiasi apertura.
+ogni campo è opzionale, e quello che ometti resta com'è). Un sensore **`Sunshade Position`** dice quanto è aperto il parasole, in % (0 = chiuso); il binary sensor **`Sunshade`** resta com'era, acceso a qualsiasi apertura. Su un'auto con range extender ci sono tre sensori del carburante: **`Fuel Level`** (%), **`Fuel Volume`** (L, i litri contati dall'auto) e **`Fuel Range`** (km con il solo carburante); un serbatoio vuoto vale 0, e un'auto solo elettrica non li riceve. I quattro numeri della tendenza del consumo con la temperatura (vedi *Statistiche*) sono i sensori **`Consumption Trend a`**, **`b`**, **`c`**, **`d`** (kWh/100 km, con T in °C), e su un'auto con range extender **`Fuel Trend a`**…**`d`** (L/100 km); non sono arrotondati, e i loro attributi danno `t_min` e `t_max`, le temperature su cui la curva è calcolata (fuori da lì è un'ipotesi), `n` viaggi e `r2`. Si ricalcolano ogni 5 minuti, e finché non c'è una curva valgono sconosciuto, mai 0.
 
 Le entità che la **tua** auto non supporta non ti vengono lasciate addosso: quelle che il modello non
 ha (sedili riscaldati, volante…) non vengono create, e un'**entità di temperatura** il cui sensore
@@ -1953,6 +2334,11 @@ Quasi sempre è perché lo **stesso account Leapmotor è usato altrove** (app uf
 integrazione, una seconda istanza di Mate). Usa un **account dedicato solo a Mate** e **cambia la
 sua password** usandola solo qui (così l'altro client viene buttato fuori e non rientra). Vedi
 [requisiti](#2-prima-di-iniziare-i-requisiti).
+
+**Mate dice "incorrect account or password", ma l'app accede.**
+L'app Leapmotor può tenere solo i primi 16 caratteri di una password e scartare il resto senza
+avvisare. Se la tua è più lunga e l'hai digitata o incollata nell'app, prova in Mate solo i suoi primi
+16 caratteri. Altrimenti controlla che l'email sia quella dell'account, senza caratteri in più.
 
 **Un comando dà "timeout" / avviso ambra.**
 Non è (di solito) un problema di Mate. I comandi sono in *tempo reale* e dipendono dalla
@@ -2054,7 +2440,8 @@ Da *Impostazioni → Esporta/backup* scarichi il database (e i CSV). Conserva il
 - **Poller / Web** — i due componenti interni di Mate: il *poller* raccoglie i dati, il *web* mostra
   l'interfaccia. Per te utente è un dettaglio: lavorano insieme.
 - **VIN** — il numero di telaio dell'auto; identifica univocamente la tua vettura.
-- **PIN operativo** — il PIN a 4 cifre dell'account, necessario per autorizzare i comandi a distanza.
+- **PIN operativo** — il PIN a 4 cifre dell'auto, impostato sull'auto e necessario per autorizzare i
+  comandi a distanza.
 
 ---
 

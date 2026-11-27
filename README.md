@@ -21,6 +21,8 @@ docker compose up -d --build
 
 此分支須用原始碼建置，上游公共鏡像與桌面發行包沒有中國區轉接器。
 
+已逐 commit 複核並同步上游 **v5.4.0**；[同步紀錄、249 項提交清單與資料升級驗證](docs/upstream-sync/2026-11-27-review.md)。
+
 ## 上游國際版參考
 
 下方保留原專案說明、致謝與歷史功能介紹；其發行包、帳號設定及車型驗收範圍屬於國際版。
@@ -29,8 +31,8 @@ docker compose up -d --build
 
 # LeapMotor Mate
 
-**v4.15.8:** the official setup wizard **offers the range-extender packs** of the C10 and B10 ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli); the diagnostics bundle **shows what the cloud answered** Mate's last requests ([#432](https://github.com/ProtossBlaster/leapmotor-mate/pull/432), @arekm). In **4.15.7**: Battery health counts a joined charge whole; the BetaTester build closes by 20 November 2026.
-See [release notes and upgrade impact](docs/releases/v4.15.8.md).
+**v5.4.0:** the start and end of a charge Mate recovered can be corrected, and under the temperature chart a straight line says how much consumption changes every 10 °C ([#501](https://github.com/ProtossBlaster/leapmotor-mate/issues/501), [D#498](https://github.com/ProtossBlaster/leapmotor-mate/discussions/498)).
+See [release notes and upgrade impact](docs/releases/v5.4.0.md).
 
 [![CI](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/ci.yml)
 [![Docker](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ProtossBlaster/leapmotor-mate/actions/workflows/docker-publish.yml)
@@ -72,17 +74,17 @@ LeapMotor Mate is free and open-source, developed in my spare time. If it's usef
 ## Features
 
 **At a glance**
-- **Overview** — live status, battery, range, **READY state**, location map and the car's own picture.
+- **Overview** — live status, battery, range, **READY state**, location map with today's last trip and the car's own picture.
 - **Security and charge state** — a **Security** indicator (green *Active* when the car is locked and the alarm is armed) and, while the cable is still in after a completed charge, a **Fully charged** badge.
 - **When the data is old, it says so** — the cloud answers even when the car cannot reach it, by re-serving the last frame it holds. Mate shows that frame's real age instead of passing it off as current.
 - **Whether the data can be trusted at all** — a tile beside the heading, **Mate → cloud → car**, with the facts behind each word on a hover: how long the poller has been running, whether the cloud is letting it in and when it last answered, when the car last sent a frame. When Mate itself cannot fetch it turns red and names the consequence, the next attempt and the error — and says the password is the thing to check only when the cloud blamed the password. Home Assistant gets the same verdict as `sensor.<car>_data_link`, and Settings gets a **Cloud link** card: a day of polling in five-minute windows and a week of counts.
 - **Vehicle software updates** — the Overview tells you when the car has an **OTA update** waiting, without opening the official app.
 
 **On the road**
-- **Trips** — automatic detection with route map, distance, energy, efficiency and regen; every trip carries its own kWh and its cost, and opens on a **summary in boxes**: distance and duration, the electricity it used and its price, and the total.
+- **Trips** — automatic detection with route map, distance, energy, efficiency and regen; every trip carries its own kWh and its cost, and opens on a **summary in boxes**: distance and duration, the electricity it used and its price, and the total. While the car drives, the trip in progress sits at the top of the page with its **Trip data** chart, live, with the time it began, the distance so far and the charge level.
 - **Consumption measured by the car** — energy, efficiency and cost come from Leapmotor's own figure (the real **driving / A·C / other** split) whenever the cloud has it, with the battery-% estimate kept as a marked, reversible fallback and a **Vehicle Cumulative Total** card for the lifetime numbers.
 - **Elevation and outside temperature** — an altitude line in the Trip data chart, the metres climbed and descended, and the highest and lowest temperature of the drive ([Open-Meteo](https://open-meteo.com) — no key, no account).
-- **Calendar, search and merging** 🆕 — browse trips by month, open a day — or several at once, by Shift-click, a drag across the days or, on a phone, holding a day: one heading for the range, then each day under its own — or search a date range. A reload, or the way back from a trip, returns to the month you were looking at. Each trip row says where the trip started and ended — a charging place by its name, elsewhere the address — and the search finds a trip by either end. An open day says how much battery its trips used and how long it was driven, and each trip row its battery change. Trips that a short stop split apart can be **merged** from that day's list with a gap slider and a route preview, and unmerged whenever you like.
+- **Calendar, search and merging** 🆕 — browse trips by month, open a day — or several at once, by Shift-click, a drag across the days or, on a phone, holding a day: one heading for the range, then each day under its own — or search a date range. A reload, or the way back from a trip, returns to the month you were looking at, and a search stays in the address: the way back from a trip it found returns to the results, at its row. Each trip row says where the trip started and ended — a charging place by its name, elsewhere the address — and the search finds a trip by either end. An open day says how much battery its trips used and how long it was driven, and each trip row its battery change. Trips that a short stop split apart can be **merged** from that day's list with a gap slider and a route preview, and unmerged whenever you like.
 - **Your own notes** — free text on any trip or charge, plus the **drive mode** (Comfort / Normal / Sport) and **One-Pedal** tags the cloud never reports.
 - **Events** — what the car did, moment by moment: unlocked and locked, a door or the tailgate opened and closed, the cable in and out, the climate on and off, READY, where the sunshade stopped, every trip and charge and every command sent from Mate; an end says how long its state lasted and what it did (the distance, the cabin before and after, the energy charged), and one map beside the list shows where — with filters by group, kind, word and date.
 
@@ -125,7 +127,7 @@ LeapMotor Mate is free and open-source, developed in my spare time. If it's usef
 
 **Setup and the rest**
 - **Demo mode** — the whole app on a realistic month of sample data — commutes, home and DC charging, costs, battery health — with **no car and no account**. One click on the welcome screen. *Nothing in it is real.*
-- **Eight languages** — English · Italiano · Français · Deutsch · Polski · Nederlands · Português · Español.
+- **Ten languages** — English · Italiano · Français · Deutsch · Polski · Nederlands · Português · Español · Čeština · Hrvatski.
 - **Currency and units** — 30 currencies, and **metric / imperial UK / imperial US**. Display only: what is stored stays metric, so you can switch back with nothing lost.
 - **Editable battery capacity** — pre-filled per model, editable if yours differs, or adopt the value Mate worked out **from your own charges**. Changing it never rewrites past charges. When a default Mate itself shipped has since been disproved by real charges, Settings says so and offers the corrected figure with one button — it never rewrites the number behind you.
 - **A car nobody was asked about says so** — a second car added to an install where the sign-in was already done never meets the wizard: it takes the **default pack of its model**, which bends its kWh, its price per kWh and its consumption. A strip across every page names it and opens the wizard. Cars already there when you update are never accused.
@@ -195,6 +197,25 @@ The same image is also on [Docker Hub](https://hub.docker.com/r/protossblaster/l
 
 To update later: `docker pull ghcr.io/protossblaster/leapmotor-mate:latest` then recreate the container.
 
+**Or with Compose** (for example in Synology Container Manager, as a new project): the `docker-compose.yml`
+in this repository builds Mate from the source, so for the prebuilt image use this one instead:
+
+```yaml
+services:
+  leapmotor-mate:
+    image: ghcr.io/protossblaster/leapmotor-mate:latest
+    container_name: leapmotor-mate
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Europe/Rome          # your time zone
+```
+
+To update later: pull the image again and recreate the container (`docker compose pull && docker compose up -d`).
+
 **Or build from source:**
 
 ```bash
@@ -259,7 +280,7 @@ A full written manual — every page explained, the setup wizard step by step, a
 | 🇩🇪 Deutsch | [BENUTZERHANDBUCH-DE.md](docs/BENUTZERHANDBUCH-DE.md) |
 | 🇪🇸 Español | [MANUAL-DE-USUARIO-ES.md](docs/MANUAL-DE-USUARIO-ES.md) |
 
-The **interface** speaks eight languages (Polski, Nederlands and Português too) — the written
+The **interface** speaks ten languages (Polski, Nederlands, Português, Čeština and Hrvatski too) — the written
 manual, for now, exists in these five.
 
 ## Setup wizard
@@ -278,7 +299,7 @@ Everything is configured from the web UI (**Settings**), no YAML needed:
 
 - **Polling interval** — parked (default 30 s) and driving (default 10 s). Faster catches trips/charges sooner; slower means fewer API calls. Polling the cloud does not wake or drain the car.
 - **Charge prices** — flat or time-of-use, on the dedicated *Charge Prices* page (see below).
-- **Language & currency** — English / Italiano / Français / Deutsch / Polski / Nederlands / Português / **Español**, and your display currency (€, $, £, CHF, zł… 30 currencies). The number format (decimal/thousands separator) follows the selected language.
+- **Language & currency** — English / Italiano / Français / Deutsch / Polski / Nederlands / Português / Español / Čeština / **Hrvatski**, and your display currency (€, $, £, CHF, zł… 30 currencies). The number format (decimal/thousands separator) follows the selected language.
 
 ### Charge prices
 
@@ -358,6 +379,8 @@ Publish the car to Home Assistant as **native entities** (in parallel to the Mat
 
 - **`Sunshade Position`** — how far the sunshade is open, in % (0 = closed). The binary `Sunshade` stays as it was, on for any opening.
 
+- **Fuel** (range-extender models only) — `Fuel Level` (%), `Fuel Volume` (L, the litres the car counts) and `Fuel Range` (km on fuel alone). An empty tank reads 0, not unknown; a plain electric car does not get them.
+
 - **Command buttons** — lock/unlock, trunk, find car, preheat battery, unlock charge cable, climate (A/C Auto / Quick Cool / Quick Heat / Quick Ventilation / Defrost / A/C Off) and comfort (heated/ventilated seats, steering-wheel & mirror heating). Turning the A/C fully **off** uses the payload each model was measured to obey: the bare `operate=off` on the B10/C10, the same value inside the full seven‑field body on the T03 (found on‑car by [@derekzoli](https://github.com/derekzoli)) — each car ignores the other's form while the cloud answers success to both. Sentry mode is offered where the account declares the right for it. The comfort commands use the payloads captured by [@kerniger](https://github.com/kerniger/leapmotor-ha).
 
 Works with any MQTT broker (e.g. the Mosquitto add‑on). Use **Test connection** to verify the broker before saving. After a command the state now updates in Home Assistant immediately (no waiting for the next poll), and the **topic prefix** scopes the device — so you can run a second instance on a different prefix without it clashing with the first.
@@ -368,8 +391,8 @@ Works with any MQTT broker (e.g. the Mosquitto add‑on). Use **Test connection*
 
 - **"Vehicle not reporting live data" in the logs is normal.** When the car is parked long enough it goes into **deep sleep** and the cloud returns no live signals. Mate backs off to 15‑minute polling (logged once, not every cycle) and recovers automatically the moment the car reports again — when it's driven, or woken by the official Leapmotor app. To be sure a short trip is captured even straight out of deep sleep, use the boost trigger above.
 - **Your credentials are encrypted at rest.** The Leapmotor password/PIN (and any HA / ABRP / MQTT / geocoder tokens) are stored encrypted in the local database, with a per‑install key in `/data/secret.key` (auto‑generated, or set your own via the `MATE_SECRET_KEY` env var). ⚠️ Keep `secret.key` together with your backups — restoring only the database without it will ask you to re‑enter the credentials.
-- **Standalone: optional login.** When running standalone (not as an add‑on), you can require a password to open the app — set one from **Settings → Access**, or via the `MATE_AUTH_PASSWORD` environment variable (the env var wins if both are set). Standalone Mate also refuses state‑changing requests that arrive from another website, and refuses to be embedded in one unless you name it in `MATE_FRAME_ANCESTORS` (e.g. a Home Assistant dashboard you control — see `.env.example`), so a page in your browser can't drive the car behind your back. To show Mate inside Home Assistant from a Docker install, [hass_ingress](https://github.com/lovelylain/hass_ingress) in its default `ingress` mode serves it from Home Assistant's own address: name that address in `MATE_FRAME_ANCESTORS` (each one you open Home Assistant with). If a password is set, the session cookie is `SameSite=Strict`, and a browser sends it inside a frame only when the page around it is on the same site as Mate: through hass_ingress's `ingress` mode, or with Home Assistant and Mate on the same host at different ports, logging in inside the panel works. A frame that points straight at Mate on another host keeps showing the login page, even after you log in in a regular tab: there, use the `ingress` mode, or leave the install without a password on a network you already trust. As a Home Assistant add‑on all of this is unnecessary (ingress already authenticates) and is skipped.
-- **Remote access: put an authenticating proxy in front, don't expose Mate directly.** Mate holds your Leapmotor credentials and can command the car, so for access from outside your network the safest route is to keep authentication *out* of Mate and delegate it. A **VPN** (Tailscale, WireGuard) means no public exposure at all. If you'd rather reach it from any browser without a VPN, an **identity‑aware proxy** — [Pomerium](https://www.pomerium.com/), Cloudflare Access, or Authelia — sits in front and logs you in with an account you already have (GitHub, Google, …), so your user accounts stay separate from Mate and you get sessions, lockout and password reset done properly. *(Thanks to @DerMAp for the Pomerium tip.)*
+- **Standalone: optional login.** When running standalone (not as an add‑on), you can require a password to open the app — set one from **Settings → Access**, or via the `MATE_AUTH_PASSWORD` environment variable (the env var wins if both are set). Standalone Mate also refuses state‑changing requests that arrive from another website, and refuses to be embedded in one unless you name it in `MATE_FRAME_ANCESTORS` (e.g. a Home Assistant dashboard you control — see `.env.example`), so a page in your browser can't drive the car behind your back. To show Mate inside Home Assistant from a Docker install, [hass_ingress](https://github.com/lovelylain/hass_ingress) in its default `ingress` mode serves it from Home Assistant's own address: name that address in `MATE_FRAME_ANCESTORS` (each one you open Home Assistant with). If a password is set, the session cookie is `SameSite=Strict`, and a browser sends it inside a frame only when the page around it is on the same site as Mate: through hass_ingress's `ingress` mode, or with Home Assistant and Mate on the same host at different ports, logging in inside the panel works. A frame that points straight at Mate on another host keeps showing the login page, even after you log in in a regular tab: there, use the `ingress` mode, or leave the install without a password on a network you already trust. As a Home Assistant add‑on all of this is skipped for the panel, since ingress already authenticates; the add‑on's port 4000, closed unless you open it, is guarded against other sites as a standalone Mate is.
+- **Remote access: put an authenticating proxy in front, don't expose Mate directly.** Mate holds your Leapmotor credentials and can command the car, so for access from outside your network the safest route is to keep authentication *out* of Mate and delegate it. A **VPN** (Tailscale, WireGuard) means no public exposure at all. If you'd rather reach it from any browser without a VPN, an **identity‑aware proxy** — [Pomerium](https://www.pomerium.com/), Cloudflare Access, or Authelia — sits in front and logs you in with an account you already have (GitHub, Google, …), so your user accounts stay separate from Mate and you get sessions, lockout and password reset done properly. *(Thanks to @DerMAp for the Pomerium tip.)* Without a password, Mate answers only on the names a home network uses — an IP address, `localhost`, a name without dots, `.local`, `.lan`, `.home.arpa`, `.internal` — because a page on another site can point a name of its own at your Mate (DNS rebinding) and drive it. Behind a proxy that passes its public name on, or on a Tailscale `*.ts.net` name, either set a password or name that host in `MATE_ALLOWED_HOSTS` (see `.env.example`).
 - Use a **dedicated Leapmotor account** (see Requirements).
 - This is an **unofficial** project, not affiliated with Leapmotor. It relies on reverse‑engineered cloud APIs and may break if Leapmotor changes them. Use at your own risk.
 - Built on [`MATE-API`](https://github.com/ProtossBlaster/MATE-API), Mate's own Leapmotor cloud client (since 4.0).
@@ -389,8 +412,8 @@ Works with any MQTT broker (e.g. the Mosquitto add‑on). Use **Test connection*
 
 # LeapMotor Mate · Italiano
 
-**v4.15.8:** la procedura guidata ufficiale **offre i pacchi del range extender** di C10 e B10 ([BetaTester #13](https://github.com/ProtossBlaster/MateBetaTesterOnly/issues/13), @ebagnoli); il pacchetto di diagnostica **mostra cosa ha risposto il cloud** alle ultime richieste di Mate ([#432](https://github.com/ProtossBlaster/leapmotor-mate/pull/432), @arekm). Nella **4.15.7**: la Salute batteria conta intera una ricarica unita; la build BetaTester chiude entro il 20 novembre 2026.
-Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v4.15.8.md#italiano).
+**v5.4.0:** l'inizio e la fine di una ricarica recuperata da Mate si possono correggere, e sotto il grafico della temperatura una retta dice quanto cambia il consumo ogni 10 °C ([#501](https://github.com/ProtossBlaster/leapmotor-mate/issues/501), [D#498](https://github.com/ProtossBlaster/leapmotor-mate/discussions/498)).
+Vedi [note di rilascio e impatto dell'aggiornamento](docs/releases/v5.4.0.md#italiano).
 
 **Tracciamento viaggi, registro ricariche e controllo remoto per veicoli Leapmotor** — un companion self‑hosted (un *TeslaMate* per Leapmotor). Funziona come **add‑on di Home Assistant** o come **container Docker standalone**.
 
@@ -425,10 +448,10 @@ LeapMotor Mate è gratuito e open-source, sviluppato nel tempo libero. Se ti è 
 - **Aggiornamenti software dell'auto** — la Panoramica ti dice quando l'auto ha un **aggiornamento OTA** in attesa, senza aprire l'app ufficiale.
 
 **In strada**
-- **Viaggi** — rilevamento automatico con mappa del percorso, distanza, energia, efficienza e recupero; ogni viaggio porta i suoi kWh e il suo costo, e si apre con un **riepilogo a riquadri**: distanza e durata, l'elettricità usata col suo prezzo, e il totale.
+- **Viaggi** — rilevamento automatico con mappa del percorso, distanza, energia, efficienza e recupero; ogni viaggio porta i suoi kWh e il suo costo, e si apre con un **riepilogo a riquadri**: distanza e durata, l'elettricità usata col suo prezzo, e il totale. Mentre l'auto viaggia, il viaggio in corso sta in cima alla pagina con il suo grafico **Dati del viaggio**, in diretta, con l'ora di inizio, la strada fatta finora e il livello di carica.
 - **Consumo misurato dall'auto** — energia, efficienza e costo arrivano dal dato ufficiale Leapmotor (la ripartizione vera fra **guida / clima / altro**) quando il cloud ce l'ha, con la stima dal SoC come ripiego segnalato e reversibile, e una scheda **Totale cumulativo del veicolo** per i numeri di sempre.
 - **Altimetria e temperatura esterna** — il profilo dell'altitudine nel grafico Dati del viaggio, i metri saliti e scesi, e la temperatura più alta e più bassa del viaggio ([Open-Meteo](https://open-meteo.com) — senza chiave e senza account).
-- **Calendario, ricerca e unione** 🆕 — sfogli i viaggi per mese, apri un giorno — o più giorni insieme, con Maiusc-clic, trascinando sui giorni o, sul telefono, tenendo premuto un giorno: un'intestazione per l'intervallo, poi ogni giorno con la sua — o cerchi un intervallo di date. Ricaricando la pagina, o tornando indietro da un viaggio, resti sul mese che stavi guardando. La riga di ogni viaggio dice da dove è partito e dove è arrivato — un luogo di ricarica col suo nome, altrove l'indirizzo — e la ricerca trova un viaggio da uno qualsiasi dei due estremi. Un giorno aperto dice quanta batteria hanno usato i suoi viaggi e quanto si è guidato, e la riga di ogni viaggio la sua variazione di batteria. I viaggi che una sosta breve ha spezzato si **uniscono** dall'elenco di quel giorno, con un cursore per la pausa e l'anteprima del percorso, e si separano quando vuoi.
+- **Calendario, ricerca e unione** 🆕 — sfogli i viaggi per mese, apri un giorno — o più giorni insieme, con Maiusc-clic, trascinando sui giorni o, sul telefono, tenendo premuto un giorno: un'intestazione per l'intervallo, poi ogni giorno con la sua — o cerchi un intervallo di date. Ricaricando la pagina, o tornando indietro da un viaggio, resti sul mese che stavi guardando, e una ricerca resta nell'indirizzo: tornando da un viaggio che ha trovato ritrovi i risultati, alla sua riga. La riga di ogni viaggio dice da dove è partito e dove è arrivato — un luogo di ricarica col suo nome, altrove l'indirizzo — e la ricerca trova un viaggio da uno qualsiasi dei due estremi. Un giorno aperto dice quanta batteria hanno usato i suoi viaggi e quanto si è guidato, e la riga di ogni viaggio la sua variazione di batteria. I viaggi che una sosta breve ha spezzato si **uniscono** dall'elenco di quel giorno, con un cursore per la pausa e l'anteprima del percorso, e si separano quando vuoi.
 - **Le tue annotazioni** — testo libero su ogni viaggio o ricarica, più la **modalità di guida** (Comfort / Normale / Sport) e il **One-Pedal**, che il cloud non dice mai.
 - **Eventi** — cosa ha fatto l'auto, momento per momento: sbloccata e bloccata, una porta o il portellone aperti e chiusi, il cavo dentro e fuori, il clima acceso e spento, READY, dove si è fermato il parasole, ogni viaggio e ricarica e ogni comando inviato da Mate; una fine dice quanto è durato il suo stato e cosa ha fatto (la strada, l'abitacolo prima e dopo, l'energia caricata), e una mappa accanto all'elenco mostra dove — con filtri per gruppo, tipo, parola e data.
 
@@ -468,7 +491,7 @@ LeapMotor Mate è gratuito e open-source, sviluppato nel tempo libero. Se ti è 
 
 **Configurazione e tutto il resto**
 - **Modalità demo** — l'app intera su un mese realistico di dati di esempio — pendolarismo, ricariche di casa e in DC, costi, salute della batteria — **senza auto e senza account**. Un clic sulla schermata di benvenuto. *Niente di quello che vedi è reale.*
-- **Otto lingue** — Italiano · English · Français · Deutsch · Polski · Nederlands · Português · Español.
+- **Dieci lingue** — Italiano · English · Français · Deutsch · Polski · Nederlands · Português · Español · Čeština · Hrvatski.
 - **Valuta e unità** — 30 valute, e **metrico / imperiale UK / imperiale US**. Solo visualizzazione: quello che è salvato resta metrico, quindi torni indietro senza perdere niente.
 - **Capacità batteria modificabile** — precompilata per modello, modificabile se la tua è diversa, oppure prendi il valore che Mate ha ricavato **dalle tue ricariche**. Cambiarla non riscrive mai le ricariche passate.
 - **Impostazioni avanzate** — i casi particolari in una scheda richiudibile: soglia delle ricariche perse, rumore del consumo da fermo, soglia di potenza AC/DC per le wallbox da 22 kW, taglio a freddo della salute batteria. Valori sensati, ripristino in un tocco.
@@ -533,6 +556,25 @@ La stessa immagine è anche su [Docker Hub](https://hub.docker.com/r/protossblas
 
 Per aggiornare in seguito: `docker pull ghcr.io/protossblaster/leapmotor-mate:latest` e ricrea il container.
 
+**Oppure con Compose** (per esempio in Container Manager di Synology, come nuovo progetto): il `docker-compose.yml`
+di questo repository costruisce Mate dai sorgenti, quindi per l'immagine già pronta usa questo:
+
+```yaml
+services:
+  leapmotor-mate:
+    image: ghcr.io/protossblaster/leapmotor-mate:latest
+    container_name: leapmotor-mate
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Europe/Rome          # il tuo fuso orario
+```
+
+Per aggiornare in seguito: scarica di nuovo l'immagine e ricrea il container (`docker compose pull && docker compose up -d`).
+
 **Oppure build da sorgente:**
 
 ```bash
@@ -596,7 +638,7 @@ domande frequenti e un glossario:
 | 🇩🇪 Deutsch | [BENUTZERHANDBUCH-DE.md](docs/BENUTZERHANDBUCH-DE.md) |
 | 🇪🇸 Español | [MANUAL-DE-USUARIO-ES.md](docs/MANUAL-DE-USUARIO-ES.md) |
 
-L'**interfaccia** parla otto lingue (anche polacco, olandese, portoghese e spagnolo) — il manuale
+L'**interfaccia** parla nove lingue (anche polacco, olandese, portoghese, spagnolo e ceco) — il manuale
 scritto, per ora, esiste in queste cinque.
 
 ## Wizard di setup
@@ -613,7 +655,7 @@ Tutto si configura dalla UI web (**Impostazioni**), senza YAML:
 
 - **Intervallo di polling** — parcheggiata (default 30 s) e in marcia (default 10 s). Più veloce rileva prima viaggi/ricariche; più lento riduce le chiamate. Interrogare il cloud non sveglia né scarica l'auto.
 - **Prezzi di ricarica** — fisso o a fasce orarie, dalla pagina dedicata *Prezzi di ricarica* (vedi sotto).
-- **Lingua e valuta** — Italiano / English / Français / Deutsch / Polski / Nederlands / Português / **Español**, e la valuta di visualizzazione (€, $, £, CHF, zł… 30 valute). Il formato numero (separatore decimale/migliaia) segue la lingua selezionata.
+- **Lingua e valuta** — Italiano / English / Français / Deutsch / Polski / Nederlands / Português / Español / Čeština / **Hrvatski**, e la valuta di visualizzazione (€, $, £, CHF, zł… 30 valute). Il formato numero (separatore decimale/migliaia) segue la lingua selezionata.
 
 ### Prezzi di ricarica
 
@@ -696,8 +738,8 @@ Funziona con qualsiasi broker MQTT (es. l'add‑on Mosquitto). Usa **Prova conne
 
 - **Il messaggio "Vehicle not reporting live data" nei log è normale.** Quando l'auto resta parcheggiata abbastanza a lungo va in **deep sleep** e il cloud non restituisce segnali live. Mate passa al polling ogni 15 minuti (loggato una volta sola, non ad ogni ciclo) e si riprende da solo appena l'auto torna a riportare — quando viene guidata, o svegliata dall'app ufficiale Leapmotor. Per essere sicuro di registrare anche un viaggio breve subito dopo il deep sleep, usa il trigger boost qui sopra.
 - **Le tue credenziali sono cifrate a riposo.** La password/PIN Leapmotor (e gli eventuali token HA / ABRP / MQTT / geocoder) sono salvati cifrati nel database locale, con una chiave per‑installazione in `/data/secret.key` (auto‑generata, oppure la tua tramite la variabile `MATE_SECRET_KEY`). ⚠️ Conserva `secret.key` insieme ai backup — ripristinando solo il database senza la chiave dovrai re‑inserire le credenziali.
-- **Standalone: login opzionale.** In modalità standalone (non add‑on), puoi richiedere una password all'apertura dell'app — impostala da **Impostazioni → Accesso**, oppure tramite la variabile d'ambiente `MATE_AUTH_PASSWORD` (se ci sono entrambe, vince la variabile). In standalone Mate rifiuta anche le richieste che modificano qualcosa provenienti da un altro sito, e si rifiuta di essere incorniciato in una pagina esterna a meno che tu non la nomini in `MATE_FRAME_ANCESTORS` (ad es. una dashboard Home Assistant che controlli tu — vedi `.env.example`), così una pagina aperta nel tuo browser non può comandare l'auto a tua insaputa. Per mostrare Mate dentro Home Assistant da un'installazione Docker, [hass_ingress](https://github.com/lovelylain/hass_ingress) nella modalità predefinita `ingress` lo serve dall'indirizzo di Home Assistant stesso: metti quell'indirizzo in `MATE_FRAME_ANCESTORS` (tutti quelli con cui apri Home Assistant). Se è impostata una password, il cookie di sessione è `SameSite=Strict`, e il browser lo invia dentro un frame solo se la pagina intorno è sullo stesso sito di Mate: con la modalità `ingress` di hass_ingress, o con Home Assistant e Mate sullo stesso host su porte diverse, l'accesso dentro il pannello funziona. Un frame che punta direttamente a Mate su un altro host mostra sempre la pagina di accesso, anche dopo aver fatto login in una scheda normale: lì usa la modalità `ingress`, oppure lascia l'installazione senza password su una rete di cui ti fidi già. Come add‑on Home Assistant tutto questo non serve (l'ingress autentica già) e viene saltato.
-- **Accesso remoto: metti davanti un proxy con autenticazione, non esporre Mate direttamente.** Mate custodisce le tue credenziali Leapmotor e può comandare l'auto, quindi per l'accesso da fuori rete la strada più sicura è tenere l'autenticazione *fuori* da Mate e delegarla. Una **VPN** (Tailscale, WireGuard) elimina del tutto l'esposizione pubblica. Se preferisci raggiungerlo da qualsiasi browser senza VPN, un **proxy identity‑aware** — [Pomerium](https://www.pomerium.com/), Cloudflare Access o Authelia — si mette davanti e ti fa accedere con un account che hai già (GitHub, Google, …): così i tuoi account utente restano separati da Mate e ottieni sessioni, blocco tentativi e reset password fatti come si deve. *(Grazie a @DerMAp per il suggerimento su Pomerium.)*
+- **Standalone: login opzionale.** In modalità standalone (non add‑on), puoi richiedere una password all'apertura dell'app — impostala da **Impostazioni → Accesso**, oppure tramite la variabile d'ambiente `MATE_AUTH_PASSWORD` (se ci sono entrambe, vince la variabile). In standalone Mate rifiuta anche le richieste che modificano qualcosa provenienti da un altro sito, e si rifiuta di essere incorniciato in una pagina esterna a meno che tu non la nomini in `MATE_FRAME_ANCESTORS` (ad es. una dashboard Home Assistant che controlli tu — vedi `.env.example`), così una pagina aperta nel tuo browser non può comandare l'auto a tua insaputa. Per mostrare Mate dentro Home Assistant da un'installazione Docker, [hass_ingress](https://github.com/lovelylain/hass_ingress) nella modalità predefinita `ingress` lo serve dall'indirizzo di Home Assistant stesso: metti quell'indirizzo in `MATE_FRAME_ANCESTORS` (tutti quelli con cui apri Home Assistant). Se è impostata una password, il cookie di sessione è `SameSite=Strict`, e il browser lo invia dentro un frame solo se la pagina intorno è sullo stesso sito di Mate: con la modalità `ingress` di hass_ingress, o con Home Assistant e Mate sullo stesso host su porte diverse, l'accesso dentro il pannello funziona. Un frame che punta direttamente a Mate su un altro host mostra sempre la pagina di accesso, anche dopo aver fatto login in una scheda normale: lì usa la modalità `ingress`, oppure lascia l'installazione senza password su una rete di cui ti fidi già. Come add‑on Home Assistant tutto questo viene saltato per il pannello, perché l'ingress autentica già; la porta 4000 dell'add‑on, chiusa finché non la apri tu, è protetta dagli altri siti come un Mate standalone.
+- **Accesso remoto: metti davanti un proxy con autenticazione, non esporre Mate direttamente.** Mate custodisce le tue credenziali Leapmotor e può comandare l'auto, quindi per l'accesso da fuori rete la strada più sicura è tenere l'autenticazione *fuori* da Mate e delegarla. Una **VPN** (Tailscale, WireGuard) elimina del tutto l'esposizione pubblica. Se preferisci raggiungerlo da qualsiasi browser senza VPN, un **proxy identity‑aware** — [Pomerium](https://www.pomerium.com/), Cloudflare Access o Authelia — si mette davanti e ti fa accedere con un account che hai già (GitHub, Google, …): così i tuoi account utente restano separati da Mate e ottieni sessioni, blocco tentativi e reset password fatti come si deve. *(Grazie a @DerMAp per il suggerimento su Pomerium.)* Senza password, Mate risponde solo ai nomi che usa una rete di casa — un indirizzo IP, `localhost`, un nome senza punti, `.local`, `.lan`, `.home.arpa`, `.internal` — perché una pagina di un altro sito può far puntare un suo nome al tuo Mate (DNS rebinding) e comandarlo. Dietro un proxy che passa il suo nome pubblico, o su un nome Tailscale `*.ts.net`, imposta una password oppure scrivi quel nome in `MATE_ALLOWED_HOSTS` (vedi `.env.example`).
 - Usa un **account Leapmotor dedicato** (vedi Requisiti).
 - Progetto **non ufficiale**, non affiliato a Leapmotor. Usa API cloud ricavate per reverse‑engineering e può smettere di funzionare se Leapmotor le cambia. Usalo a tuo rischio.
 - Basato su [`MATE-API`](https://github.com/ProtossBlaster/MATE-API), il client cloud Leapmotor di Mate (dalla 4.0).

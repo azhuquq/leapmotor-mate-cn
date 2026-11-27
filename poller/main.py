@@ -12,10 +12,11 @@ _PROJECT_ROOT = pathlib.Path(__file__).parent.parent
 
 import abrp
 import energy_snapshots
+import gps_position
 import ready_automation
 import session_share
 from client import (LeapmotorMateClient, set_charge_current_min, EmptyStatusError,
-                    seed_coord_signs, get_coord_signs)
+                    seed_coord_signs, get_coord_signs, restore_gps_record, get_gps_record, use_pin_of)
 from db import Database, log_login
 from mqtt import MqttService
 from outside_temp import OutsideTempSampler
@@ -118,10 +119,11 @@ def _charge_fields(data) -> str:
     return f"plug={plug} chg={data.charging_status} A={amps}"
 
 
-def _climate_ctx_from_db(db, vin: str = ""):
-    """(mode_token, circle, fan, temp) from THIS car's latest stored position — lets an MQTT
-    fan/recirc change PRESERVE the rest of the panel. Short-lived connection: this runs on paho's
-    network thread and the poller's shared db connection is not safe cross-thread.
+def _climate_ctx_from_db(db, vin: str = "", *, fan_top):
+    """(mode_token, circle, fan, temp) from THIS car's latest stored position, the fan kept from 1 to
+    `fan_top`, the car's top speed — lets an MQTT fan/recirc change PRESERVE the rest of the
+    panel. Short-lived connection: this runs on paho's network thread and the poller's shared db
+    connection is not safe cross-thread.
 
     ⚠️ `vin` is what makes the panel belong to the right car. Without it this read the newest row of
     `positions` FULL STOP, and the poller polls every car on the account, each writing its own rows:
@@ -137,25 +139,54 @@ def _climate_ctx_from_db(db, vin: str = ""):
     → [[feedback-leapmotor-discovery-method]] · [[t03-climate-operate-manual-only]]"""
     mode, circle, fan, temp = "wind", "out", 3, 26
     try:
-        import sqlite3
-        c = sqlite3.connect(db._path, timeout=5.0)
-        try:
-            row = c.execute(
-                "SELECT p.climate_mode, p.recirculation, p.fan_level, p.climate_target_temp "
-                "FROM positions p JOIN vehicles v ON v.id = p.vehicle_id "
-                "WHERE v.vin = ? ORDER BY p.id DESC LIMIT 1", (vin,)).fetchone()
-        finally:
-            c.close()
+        row = _climate_row_from_db(db, vin)
         if row:
             mode = _CLIM_MODE_TOKEN.get(row[0], "wind")
             circle = "in" if row[1] else "out"
-            try: fan = max(1, min(int(row[2] or 3), 7))
+            try: fan = max(1, min(int(row[2] or 3), fan_top))
             except (TypeError, ValueError): fan = 3
             try: temp = max(18, min(int(float(row[3] or 26)), 32))
             except (TypeError, ValueError): temp = 26
     except Exception:  # noqa: BLE001 — fall back to safe defaults
         pass
     return mode, circle, fan, temp
+
+
+def _climate_row_from_db(db, vin: str):
+    """(climate_mode, recirculation, fan_level, climate_target_temp) of THIS car's latest stored
+    position, or None. Short-lived connection: it runs on paho's network thread."""
+    import sqlite3
+    c = sqlite3.connect(db._path, timeout=5.0)
+    try:
+        return c.execute(
+            "SELECT p.climate_mode, p.recirculation, p.fan_level, p.climate_target_temp "
+            "FROM positions p JOIN vehicles v ON v.id = p.vehicle_id "
+            "WHERE v.vin = ? ORDER BY p.id DESC LIMIT 1", (vin,)).fetchone()
+    finally:
+        c.close()
+
+
+def _climate_temp_body(db, vin: str, temp: int, *, car_type: str, fan_top: int) -> str:
+    """The body web/command_client.set_climate_temp sends, for THIS car's panel (#489): the target
+    changes, mode, recirculation and fan stay. AUTO (3713=0) or an unknown mode stays AUTO
+    (operate=auto + nohotcold, confirmed on-car 2026-06-21); the T03 ignores an AUTO write (#67) and
+    gets manual cold, as on the page. A test holds this equal to the page's body."""
+    try:
+        row = _climate_row_from_db(db, vin)
+    except Exception:  # noqa: BLE001 — no panel read: the page's own defaults
+        row = None
+    mode_raw, recirc, fan_raw, _t = row or (None, None, None, None)
+    token = _CLIM_MODE_TOKEN.get(mode_raw)
+    operate, mode = ("manual", token) if token else ("auto", "nohotcold")
+    if operate == "auto" and car_type == "T03":
+        operate, mode = "manual", "cold"
+    try:
+        fan = max(1, min(int(fan_raw or 5), fan_top))
+    except (TypeError, ValueError):
+        fan = 5
+    return json.dumps({"circle": "in" if recirc else "out", "mode": mode, "operate": operate,
+                       "position": "all", "temperature": str(temp), "windlevel": str(fan),
+                       "wshld": "0"}, separators=(",", ":"))
 
 
 # Windows open %→native scale (mirrors web/command_client._windows_native): the B10/C10/B05
@@ -276,7 +307,7 @@ def _apply_charge_schedule(api, db, vin: str, payload: dict):
     # Keep the Overview's cached window in step with what we just wrote (#173) — the periodic
     # re-read is 30 minutes away, and a chip still showing the old times right after an automation
     # moved them looks like a fault rather than like a cache.
-    _store_charge_schedule(db, {"chargeEnable": 1 if enabled else 0,
+    _store_charge_schedule(db, {"chargeEnable": 1 if enabled else 0, "chargesoc": soc,
                                 "starttime": start_time, "endtime": end_time}, vin)
     log.info("MQTT: charge schedule → %s", applied)
     return applied
@@ -300,21 +331,11 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
             log.warning("中國區 MQTT 控制未支援或未獲授權")
             return
     api = client._api
-    # Authorise with the PIN of the car this command NAMES (#186, @cookingeek). MQTT is not scoped
-    # to a picked car — the topic carries the VIN — so on two cars with different PINs, using the
-    # session's own would authenticate one car's command with the other's four digits: a failure
-    # that happens only sometimes and never says why. No per-car PIN → the install-wide one.
-    try:
-        _pin = db.get_operate_pin(vin)
-        if _pin or getattr(api, "_mate_cn_api", False):
-            api.operation_password = _pin
-    except Exception:  # noqa: BLE001 — a PIN lookup must never stop a command from being tried
-        if getattr(api, "_mate_cn_api", False):
-            api.operation_password = ""
-        pass
     optimistic = None if getattr(api, "_mate_cn_api", False) else _MQTT_OPTIMISTIC.get(cmd)
     try:
         with _API_LOCK:  # serialize against the poll loop's get_status (shared HTTP session)
+            # Under the lock: the Ready automation sets the PIN of its own car from the poll loop.
+            use_pin_of(api, db, vin)     # MQTT is not scoped to a picked car: the topic names the VIN
             if cmd == "lock":          api.lock_vehicle(vin)
             elif cmd == "unlock":      api.unlock_vehicle(vin)
             elif cmd == "open_trunk":  api.open_trunk(vin)
@@ -336,6 +357,7 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
                     log.warning("MQTT: charge_limit %d%% out of range 50-100 — ignored", pct)
                     return
                 _set_charge_limit_preserving(api, vin, pct)
+                _plan_target[vin] = pct   # in step with what we just wrote, as the window is (#173, #436)
             elif cmd == "charge_schedule":  # writable HA text (#151): JSON {start,stop,soc,active,days}
                 try:
                     sched = json.loads(value)
@@ -381,7 +403,7 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
                 # (climate mode 3713=0), so NO manual mode is engaged. Target temp from THIS car's
                 # last panel reading. Same body as web/command_client.ac_on — #292 asked for it
                 # from an automation and the bridge had neither a button nor this branch.
-                _m, _c, _f, _tmp = _climate_ctx_from_db(db, vin)
+                _m, _c, _f, _tmp = _climate_ctx_from_db(db, vin, fan_top=service.fan_top_for(vin))
                 try:
                     _tmp = max(18, min(int(float(_tmp)), 32))
                 except (TypeError, ValueError):
@@ -424,19 +446,28 @@ def _handle_mqtt_command(client, service, db, vin: str, cmd: str, value):
                 api._remote_control(vin=vin, action="ac_on",
                     cmd_content='{"circle":"in","mode":"wind","operate":"manual","position":"all","temperature":"26","windlevel":"7","wshld":"0"}')
                 optimistic = ("climate_on", True)
-            elif cmd == "fan_level":      # writable HA number: value = fan 1-7 (signal 1941)
+            elif cmd == "fan_level":      # writable HA number: value = one of the car's fan speeds (signal 1941)
+                top = service.fan_top_for(vin)
                 try:
-                    lvl = max(1, min(int(float(value)), 7))
+                    lvl = max(1, min(int(float(value)), top))
                 except (TypeError, ValueError):
                     log.warning("MQTT: fan_level value %r not a number — ignored", value); return
-                m, circ, _f, tmp = _climate_ctx_from_db(db, vin)
+                m, circ, _f, tmp = _climate_ctx_from_db(db, vin, fan_top=top)
                 api._remote_control(vin=vin, action="ac_on", cmd_content=json.dumps(
                     {"circle": circ, "mode": m, "operate": "manual", "position": "all",
                      "temperature": str(tmp), "windlevel": str(lvl), "wshld": "0"}, separators=(",", ":")))
                 optimistic = ("climate_on", True)
+            elif cmd == "climate_temp":   # writable HA number (#489): value = target °C, 18–32
+                try:
+                    t = max(18, min(int(round(float(value))), 32))
+                except (TypeError, ValueError, OverflowError):
+                    log.warning("MQTT: climate_temp value %r not a temperature — ignored", value); return
+                api._remote_control(vin=vin, action="ac_on", cmd_content=_climate_temp_body(
+                    db, vin, t, car_type=_mqtt_car_type(client, vin), fan_top=service.fan_top_for(vin)))
+                optimistic = ("climate_on", True)
             elif cmd == "recirculation":  # writable HA switch: ON = recirc / OFF = fresh (signal 1943)
                 on = str(value).upper() == "ON"
-                m, _circ, f, tmp = _climate_ctx_from_db(db, vin)
+                m, _circ, f, tmp = _climate_ctx_from_db(db, vin, fan_top=service.fan_top_for(vin))
                 api._remote_control(vin=vin, action="ac_on", cmd_content=json.dumps(
                     {"circle": "in" if on else "out", "mode": m, "operate": "manual", "position": "all",
                      "temperature": str(tmp), "windlevel": str(f), "wshld": "0"}, separators=(",", ":")))
@@ -512,6 +543,7 @@ def _write_comfort_state(db, data):
 
 _SCHEDULE_REFRESH_INTERVAL = 1800   # 30 min — a charge window is set once and left alone for months
 _last_schedule_refresh = 0.0
+_plan_target: dict[str, int] = {}   # the SoC each car's charge plan (190) stops at, by VIN (#436)
 
 
 def _maybe_refresh_charge_schedule(db, client):
@@ -539,6 +571,10 @@ def _store_charge_schedule(db, sched, vin: str = "") -> None:
     leaves the previous value alone rather than blanking the chip on one bad call."""
     if not sched:
         return
+    try:
+        _plan_target[vin] = int(sched["chargesoc"])
+    except (KeyError, TypeError, ValueError):
+        pass
     try:
         db.set_charge_schedule(vin, bool(int(sched.get("chargeEnable", 0) or 0)),
                                str(sched.get("starttime") or ""), str(sched.get("endtime") or ""))
@@ -629,6 +665,12 @@ def _mqtt_connect(db, client, service):
     return service
 
 
+def efftemp_trend_key(vin: str) -> str:
+    """Where the web leaves one car's consumption-vs-temperature trend for MQTT (D#498). 🔴 The
+    same key is spelled in web/db_reader.py; the trees cannot import each other, a test holds them."""
+    return f"efftemp_trend_{str(vin).lower()}"
+
+
 def _mqtt_tick(db, client, data, service, vehicle=None, vehicle_id=None):
     """Manage the MQTT bridge each poll cycle: (dis)connect on the enable flag,
     then publish the current state. Returns the (possibly new/None) service."""
@@ -652,6 +694,9 @@ def _mqtt_tick(db, client, data, service, vehicle=None, vehicle_id=None):
             car_type=getattr(vehicle, "car_type", None) if vehicle is not None else None,
             absent_temps=db.never_reported_temps(vehicle_id),
         )
+        # The consumption-vs-temperature trend (D#498): computed by the web, where the trip
+        # temperatures are written, and only relayed here. Unchanged, it costs a string compare.
+        service.publish_trend(data.vin, db.get_setting(efftemp_trend_key(data.vin), ""))
     except Exception as exc:  # noqa: BLE001
         log.error("MQTT: publish failed: %s", exc)
     return service
@@ -708,7 +753,8 @@ def load_config(db: "Database") -> dict:
     return {
         "username":  _get("LEAPMOTOR_USER", "leapmotor_user"),
         "password":  _get("LEAPMOTOR_PASS", "leapmotor_pass", secret=True),
-        "pin":       _get("LEAPMOTOR_PIN",  "leapmotor_pin", "", secret=True),
+        # A command takes its car's own PIN (Database.get_operate_pin); the session starts with this one.
+        "pin":       os.environ.get("LEAPMOTOR_PIN", ""),
         "cert_path": _cert_path("app.crt", "CERT_PATH"),
         "key_path":  _cert_path("app.key", "KEY_PATH"),
     }
@@ -744,11 +790,13 @@ def reconcile_coord_signs(db, vehicle_id: int, vin: str) -> None:
 
     ⚠️ The setting is REWRITTEN when it loses, not merely ignored — the web reads that setting and
     has no history of its own, so leaving it wrong would fix the poller and leave the map at sea.
+    Read and written per car (db.get_gps_signs / set_gps_signs), the keys the poll loop and the
+    web use: corrected on the shared key alone, the web would go on applying the poisoned one.
     """
     stored: dict[str, float] = {}
-    for axis in ("lat", "lon"):
+    for axis, raw in db.get_gps_signs(vin).items():
         try:
-            stored[axis] = float(db.get_setting(f"gps_{axis}_sign", "0") or 0)
+            stored[axis] = float(raw or 0)
         except (TypeError, ValueError):
             stored[axis] = 0.0
     try:
@@ -758,6 +806,7 @@ def reconcile_coord_signs(db, vehicle_id: int, vin: str) -> None:
                     exc_info=True)
         history = {}
 
+    corrected = False
     for axis, was in stored.items():
         now = history.get(axis)
         if now is None or now == was:
@@ -772,10 +821,14 @@ def reconcile_coord_signs(db, vehicle_id: int, vin: str) -> None:
             # and it is the ordinary state of every install that predates this code — warning about
             # it would put an alarm in the log of every user who has nothing wrong with them.
             log.info("GPS %s: no sign on record, taking %+g from this car's own history", axis, now)
-        db.set_setting(f"gps_{axis}_sign", str(now))
         stored[axis] = now
+        corrected = True
 
-    seed_coord_signs(vin, stored["lat"], stored["lon"])
+    if corrected:
+        db.set_gps_signs(vin, *(str(stored[a]) if stored[a] else "" for a in ("lat", "lon")))
+    seed_coord_signs(vin, stored["lat"], stored["lon"], db.get_newest_frame_ts(
+        vehicle_id, int(time.time() * 1000) + gps_position.FUTURE_CLOCK_MS))
+    restore_gps_record(vin, db.get_gps_record(vin))
 
 
 class VehicleContext:
@@ -797,7 +850,7 @@ class VehicleContext:
     """
 
     __slots__ = ("vehicle", "vehicle_id", "vin", "recorder", "persisted_signs",
-                 "empty_status_count", "poll_error_count", "research_last_sig",
+                 "persisted_gps_record", "empty_status_count", "poll_error_count", "research_last_sig",
                  "interval", "next_due", "outside_sampler", "abrp_last_sent", "link")
 
     def __init__(self, db, vehicle, vehicle_id: int):
@@ -810,6 +863,7 @@ class VehicleContext:
         # fragmentation) and only closes it if the activity has actually ended.
         self.recorder = Recorder(db, vehicle_id)
         self.persisted_signs: dict = {}
+        self.persisted_gps_record = ""
         self.empty_status_count = 0   # consecutive "no live signals" responses (car asleep)
         self.poll_error_count = 0     # consecutive hard API errors (cloud unreachable)
         self.research_last_sig: dict = {}   # beta build: last value per signal id, for delta logging
@@ -1081,14 +1135,23 @@ def _poll_vehicle(db, client, ctx, acct) -> None:
             # learning overwrote the first's — and that car goes back into the sea.
             db.set_gps_signs(ctx.vehicle.vin, str(signs.get("lat") or ""), str(signs.get("lon") or ""))
             ctx.persisted_signs = signs
+        # The anchor (gps_position): the web places its rows by it, and a restart must not lose it
+        # (#458's poller restarted between parking and the frames it refused). ~1 write per km.
+        gps_record = get_gps_record(ctx.vin)
+        if gps_record != ctx.persisted_gps_record:
+            db.set_gps_record(ctx.vehicle.vin, gps_record)
+            ctx.persisted_gps_record = gps_record
 
         # Persist the car's configured charge limit (the SoC it will stop at) whenever it
         # changes, so the Overview hero can label the charge ETA with the real % read cheaply
         # from settings — works even when the limit is changed from the official app. Write
         # only on change, like the GPS sign above → no per-poll churn.
-        _persist_charge_limit(db, data.vin, data.charge_limit_percent)
-
         _maybe_refresh_charge_schedule(db, client)
+        if data.charge_limit_percent is None:
+            # A T03's status carries no limit; its charge plan does (#436). Only then: on our B10
+            # the plan is a copy of the last command and can disagree with the car.
+            data.charge_limit_percent = _plan_target.get(data.vin)
+        _persist_charge_limit(db, data.vin, data.charge_limit_percent)
 
         # Daily ledger of the official lifetime energy/mileage counters + getEC split
         # (silent phase-1 collector) — throttled to 24h, best-effort.
@@ -1397,6 +1460,8 @@ def main():
         vid = db.ensure_vehicle(veh.vin, veh.car_type, getattr(veh, "year", None),
                                 abilities=getattr(veh, "abilities", None))
         contexts.append(VehicleContext(db, veh, vid))
+    # A car registered for the first time takes the install-wide PIN an older install still holds.
+    db.migrate_install_pin()
     # The one-car → two-cars transition is visible HERE and nowhere else, and it is where the
     # install-wide ABRP token stops being safe: from this moment both cars would answer to it and
     # push into a single ABRP vehicle. Hand it to the car that was here first and drop the shared

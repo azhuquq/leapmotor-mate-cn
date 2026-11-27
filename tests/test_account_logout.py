@@ -9,52 +9,44 @@ def test_logout_clears_login_but_keeps_data(tmp_path):
     # A configured account with a car already on file.
     database.set_setting("leapmotor_user", "old@example.com")
     database.set_secret("leapmotor_pass", "oldpass")
-    database.set_secret("leapmotor_pin", "1111")
     database.mark_setup_complete()
     vid = database.ensure_vehicle("LVIN0000000000001", "B10", 2025)
+    database.set_secret("leapmotor_pin_lvin0000000000001", "1111")
 
-    # Exactly what POST /api/account/logout does: clear the three login keys + the setup flag.
+    # Exactly what POST /api/account/logout does: clear the login keys, each car's PIN + the setup flag.
     database.set_setting("leapmotor_user", "")
     database.set_secret("leapmotor_pass", "")
-    database.set_secret("leapmotor_pin", "")
+    database.set_secret("leapmotor_pin_lvin0000000000001", "")
     database.set_setting("setup_complete", "0")
 
     # Login is gone and the wizard re-opens…
     assert database.get_setting("leapmotor_user") == ""
     assert database.get_secret("leapmotor_pass") == ""
-    assert database.get_secret("leapmotor_pin") == ""
+    assert database.get_operate_pin("LVIN0000000000001") == ""
     assert not database.is_setup_complete()
     # …but the car (and therefore its trips/charges, keyed by vehicle_id) is untouched.
     assert database.ensure_vehicle("LVIN0000000000001", "B10", 2025) == vid
 
 
 def test_account_switch_is_detected(tmp_path):
-    """The poller guards on (user, pass, pin) != startup: a *different* complete login means
-    'switch accounts → restart'. The cleared logout window (any field empty) must NOT trigger."""
+    """The poller guards on (user, pass) != startup: a *different* complete login means 'switch
+    accounts → restart'. The cleared logout window (any field empty) must NOT trigger. The PIN it
+    also compares is only `LEAPMOTOR_PIN`, which never changes under a running process."""
     database = D.Database(str(tmp_path / "t.db"))
     database.set_setting("leapmotor_user", "old@example.com")
     database.set_secret("leapmotor_pass", "oldpass")
-    database.set_secret("leapmotor_pin", "1111")
-    startup = (database.get_setting("leapmotor_user"),
-               database.get_secret("leapmotor_pass"),
-               database.get_secret("leapmotor_pin"))
+    startup = (database.get_setting("leapmotor_user"), database.get_secret("leapmotor_pass"))
 
     # Logged-out limbo: creds cleared → tuple differs but is incomplete → no restart.
     database.set_setting("leapmotor_user", "")
     database.set_secret("leapmotor_pass", "")
-    database.set_secret("leapmotor_pin", "")
-    limbo = (database.get_setting("leapmotor_user"),
-             database.get_secret("leapmotor_pass"),
-             database.get_secret("leapmotor_pin"))
+    limbo = (database.get_setting("leapmotor_user"), database.get_secret("leapmotor_pass"))
     assert limbo != startup and not all(limbo)   # guard's all(...) check skips this
 
     # New account linked via the wizard: complete + different → poller exits to re-auth.
     database.set_setting("leapmotor_user", "new@example.com")
     database.set_secret("leapmotor_pass", "newpass")
-    database.set_secret("leapmotor_pin", "2222")
-    switched = (database.get_setting("leapmotor_user"),
-                database.get_secret("leapmotor_pass"),
-                database.get_secret("leapmotor_pin"))
+    switched = (database.get_setting("leapmotor_user"), database.get_secret("leapmotor_pass"))
     assert switched != startup and all(switched)
 
 

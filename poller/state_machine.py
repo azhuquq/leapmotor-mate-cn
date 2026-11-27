@@ -210,9 +210,9 @@ class StateMachine:
         parked_gear = data.gear == "P" or (getattr(data, "market", "EU") == "CN"
                                           and data.gear == "N" and not is_driving)
         # A charge SESSION opens only on REAL charging current: charging_status = a measured current
-        # ≥ 2 A (or 1149==2 on a C10, see _is_charging). NEVER on the cable alone — a car waiting for
-        # its programmed window reports 1149==4 with no current (#243), and that must NOT start
-        # counting a charge (see _is_charging vs _is_plugged_in). This is the documented
+        # into the pack ≥ 2 A (or 1149==2 on a C10, see _is_charging). NEVER on the cable alone — a
+        # car waiting for its programmed window reports 1149==4 with no current (#243), and that must
+        # NOT start counting a charge (see _is_charging vs _is_plugged_in). This is the documented
         # ANY_PARKED→CHARGING condition (charging_status>0).
         charge_active = data.charging_status > 0
         # ...except on a REEV, where neither of those two ever appears during an AC home charge
@@ -243,7 +243,8 @@ class StateMachine:
         # So on such a wallbox this OR-term goes false on every pause and the session DOES fragment.
         # Deliberately not fixed here: a grace window would have to guess, and its guess would be
         # irreversible. The chosen remedy is to let the user join the rows afterwards, the way trips
-        # are merged — reversible, and it never recomputes a cost.
+        # are merged — reversible, and it never recomputes a cost. A pause the car reports as one
+        # (1149 == 6, cable in) is no guess, and holds the session: `is_plugged_in` reads it as connected.
         #
         # The cable also ends the trip immediately on plug-in (DRIVING branch), before any current flows.
         #

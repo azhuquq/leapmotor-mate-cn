@@ -1,0 +1,18 @@
+{
+  "old_commit": "9ca03b132b",
+  "new_upstream": "2321ad5e506c",
+  "cold_starts": [
+    "web",
+    "poller",
+    "web"
+  ],
+  "tables_retained": [
+    "vehicles",
+    "positions",
+    "trips",
+    "charges"
+  ],
+  "all_old_settings_retained": true,
+  "session_pin_key_retained": true,
+  "network_requests": 0
+}

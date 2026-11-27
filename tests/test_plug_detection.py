@@ -86,7 +86,7 @@ def test_parse_signal_frozen_snapshot_not_plugged():
 def test_parse_signal_active_charge_is_plugged():
     charging = {
         "1010": 0, "1319": 0.0, "100003": 55.0,
-        "1178": 16.0, "1177": 230.0, "1149": 2, "1200": 120,
+        "1178": -16.0, "1177": 230.0, "1149": 2, "1200": 120,
     }
     data = client._parse_signal("VIN123", charging)
     assert data.plug_connected is True
@@ -134,8 +134,8 @@ def test_web_save_fresh_signals_connected_plugged(tmp_path, monkeypatch):
 
 def test_web_save_fresh_signals_cable_state_three_still_plugged(tmp_path, monkeypatch):
     # The REEV mid-charge flicker 1→2→3→2: 3 is still connected. The poller has counted it since
-    # v2.8.4 (reading it as unplugged shredded slow AC charges — beta #12/#13); this writer is the
-    # second copy of that rule and must not disagree with it.
+    # v2.8.4 (reading it as unplugged shredded slow AC charges — beta #12/#13); the row the web
+    # writes must read it the same way.
     path = _web_db(tmp_path, monkeypatch)
     db_reader.save_fresh_signals({"1010": 0, "1319": 0, "1178": 0.5, "1177": 400,
                                   "1149": 3, "1200": 200, "100003": 42})
@@ -143,9 +143,9 @@ def test_web_save_fresh_signals_cable_state_three_still_plugged(tmp_path, monkey
 
 
 def test_web_save_fresh_signals_drive_time_cable_code_not_charging(tmp_path, monkeypatch):
-    # 1149==5 is the drive-time cable code the REEVs emit while moving, never a connection. The web
-    # writer has its own copy of _is_charging, so it has to exclude 5 too or the two disagree on the
-    # same signal — the frame is ebagnoli's, 23/07 08:30 (beta #13), speed still stale at 0.
+    # 1149==5 is the drive-time cable code the REEVs emit while moving, never a connection. The row
+    # the web writes has to exclude 5 too, or the two writers disagree on the same signal — the
+    # frame is ebagnoli's, 23/07 08:30 (beta #13), speed still stale at 0.
     path = _web_db(tmp_path, monkeypatch)
     db_reader.save_fresh_signals({"1010": 0, "1319": 0, "1178": -27.6, "1177": 400,
                                   "1149": 5, "1200": 45, "100003": 25})
@@ -163,7 +163,7 @@ def test_charge_session_closes_on_unplug_despite_stuck_47():
 
     sm = StateMachine()
     charging = client._parse_signal("VIN", {
-        "1010": 0, "1319": 0, "100003": 55, "1178": 16, "1177": 230, "1149": 2, "1200": 120})
+        "1010": 0, "1319": 0, "100003": 55, "1178": -16, "1177": 230, "1149": 2, "1200": 120})
     sm.update(charging)
     assert sm.state == State.CHARGING
 

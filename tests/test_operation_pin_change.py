@@ -9,10 +9,8 @@ Logout is a frightening button to press for a typo.
 Typed twice, for the same reason as the access password (#214 @rop12770): a PIN stored with a typo
 does not fail here, it fails at the CAR, later, with an error that names no digit.
 
-⚠️ What these tests also pin down is what does NOT need doing. The stored secret already beats
-`LEAPMOTOR_PIN` in both readers, and the poller already compares (user, password, PIN) against the
-ones it started with on every cycle — a watcher written for the account switch that happens to cover
-this exactly. Writing the secret is the whole feature; anything more would be a second mechanism.
+The PIN is set on the car, so the form always stores one car's: the car of the Vehicle card, or
+the one picked from the second car on.
 """
 import json
 import pathlib
@@ -21,16 +19,8 @@ import re
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MAIN = (ROOT / "web" / "main.py").read_text()
 SETTINGS = (ROOT / "web" / "templates" / "settings.html").read_text()
-POLLER = (ROOT / "poller" / "main.py").read_text()
 LOCALES = sorted((ROOT / "web" / "locales").glob("*.json"))
-
-
-def _route() -> str:
-    """The route's own body, so nothing here can be satisfied by another endpoint."""
-    assert '@app.post("/api/settings/pin")' in MAIN, "the route does not exist"
-    return MAIN.split('@app.post("/api/settings/pin")', 1)[1].split("\n@app.", 1)[0]
 
 
 def _form() -> str:
@@ -41,39 +31,84 @@ def _form() -> str:
 
 # ── the route ────────────────────────────────────────────────────────────────
 
-def test_the_pin_is_stored_where_both_readers_look():
-    body = _route()
-    assert 'db_reader.set_secret("leapmotor_pin", pin)' in body
-    assert "set_setting" not in body, "a PIN is a secret, not a setting: it must be encrypted"
+A, B = "LFZB10AAAAAAAAAA1", "LFZC10BBBBBBBBBB2"
 
 
-def test_a_mismatch_is_refused_by_the_server_not_only_the_browser():
-    """`required` in the form is a convenience. The check that matters is this one — the browser's
-    can be skipped by anything that is not a browser."""
-    body = _route()
-    assert 'if pin2 != pin:' in body
-    assert '422' in body
-    i, j = body.index("if pin2 != pin:"), body.index('set_secret("leapmotor_pin"')
-    assert i < j, "the PIN must not be written before the two are compared"
+@pytest.fixture
+def web(tmp_path, monkeypatch):
+    """A configured install and the web app on it; `cars` adds the cars the account has."""
+    pytest.importorskip("fastapi", reason="web.main needs fastapi")
+    import db as D
+    import db_reader
+    import main
+    from starlette.testclient import TestClient
+    for var in ("MATE_AUTH_PASSWORD", "SUPERVISOR_TOKEN", "HASSIO_TOKEN", "LEAPMOTOR_PIN"):
+        monkeypatch.delenv(var, raising=False)
+    poller = D.Database(str(tmp_path / "p.db"))
+    monkeypatch.setattr(db_reader, "DB_PATH", str(tmp_path / "p.db"))
+
+    def cars(*vins):
+        main.apply_setup_vehicles([{"vin": v, "car_type": "B10" if v == A else "C10",
+                                    "battery": "67.1", "is_reev": "0", "pin": "1111"} for v in vins])
+        db_reader.set_setting("setup_complete", "1")
+        db_reader.set_setting("leapmotor_user", "owner@example.com")
+        return TestClient(main.app), poller
+    return cars
 
 
-def test_an_empty_pin_is_refused():
-    body = _route()
-    assert "if not pin:" in body
-    assert body.index("if not pin:") < body.index('set_secret("leapmotor_pin"')
+def test_with_two_cars_one_car_s_pin_leaves_the_other(web):
+    client, _ = web(A, B)
+    import db_reader
+    assert client.post("/api/settings/pin", data={"pin": "2222", "pin2": "2222", "vin": B}).status_code == 204
+    assert db_reader.get_operate_pin(B) == "2222"
+    assert db_reader.get_operate_pin(A) == "1111"
 
 
-def test_the_web_command_session_is_dropped_so_the_next_command_re_authenticates():
-    assert "command_client._session._reset()" in _route()
+@pytest.mark.parametrize("form,why", [
+    ({"pin": "2222", "pin2": "2223"}, "mismatch"),
+    ({"pin": "", "pin2": ""}, "empty"),
+    ({"pin": "2222", "pin2": "2222", "vin": "LFZGHOST000000000"}, "unknown vin"),
+    ({"pin": "2222", "pin2": "2222", "vin": ""}, "unknown vin"),
+], ids=["mismatch", "empty", "unknown-car", "no-car"])
+def test_a_bad_form_is_refused_and_nothing_is_stored(web, form, why):
+    """`required` in the form is a convenience; the check that matters is the server's."""
+    client, _ = web(A)
+    import db_reader
+    r = client.post("/api/settings/pin", data={"vin": A, **form})
+    assert (r.status_code, r.text) == (422, why)
+    assert db_reader.get_operate_pin(A) == "1111"
 
 
-def test_the_poller_already_notices_and_nothing_new_was_added_for_it():
-    """The watcher was written for the account switch (Logout → new setup) and compares the whole
-    triple, PIN included. A second mechanism here would be a second thing to keep in step."""
-    assert '(_login_now["username"], _login_now["password"], _login_now["pin"]) != _startup_login' in POLLER
-    assert "os._exit(42)" in POLLER
-    assert "leapmotor_pin" not in _route().replace('db_reader.set_secret("leapmotor_pin", pin)', ""), \
-        "the route touches the PIN exactly once"
+def test_logout_clears_every_pin(web):
+    client, _ = web(A, B)
+    import db_reader
+    db_reader.set_secret("leapmotor_pin", "2222")    # typed in a wizard that found no car
+    assert client.post("/api/account/logout").status_code == 204
+    assert db_reader.get_operate_pin(A) == db_reader.get_operate_pin(B) == ""
+    assert db_reader.get_secret("leapmotor_pin") == ""
+
+
+def test_one_car_s_form_stores_the_pin_commands_use(web):
+    """The one-car form used to post no car, so it stored an install-wide PIN that the wizard's own
+    PIN for the car outranked: the commands kept the old PIN."""
+    client, poller = web(A)
+    import db_reader
+    page = client.get("/settings").text
+    form = page.split('hx-post="api/settings/pin"', 1)[1].split("</form>", 1)[0]
+    assert "Operation PIN of this car · B10 · AAAAA1" in form
+    fields = dict(re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)"', form))
+    assert client.post("/api/settings/pin", data={**fields, "pin": "2222", "pin2": "2222"}).status_code == 204
+    assert db_reader.get_operate_pin(A) == poller.get_operate_pin(A) == "2222"
+
+
+def test_two_cars_pick_one_and_there_is_no_all_cars(web):
+    client, _ = web(A, B)
+    import db_reader
+    db_reader.set_active_vehicle(B)
+    page = client.get("/settings").text
+    form = page.split('hx-post="api/settings/pin"', 1)[1].split("</form>", 1)[0]
+    options = re.findall(r'<option value="([^"]*)"( selected)?', form)
+    assert options == [(A, ""), (B, " selected")], "only cars, the one on screen chosen"
 
 
 # ── the form ─────────────────────────────────────────────────────────────────

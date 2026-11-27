@@ -27,6 +27,8 @@ import json
 import logging
 import time
 
+from client import use_pin_of
+
 log = logging.getLogger("leapmotor.ready_automation")
 
 READY_DEBOUNCE_S = 60   # same job and same number as db_reader._READY_BLIP_S: how short a
@@ -192,6 +194,7 @@ def maybe_trigger(db, client, data, api_lock, now: float = None, vehicle=None) -
         bundle = _build_bundle(cfg)
         sent = False
         with api_lock:
+            use_pin_of(client._api, db, vin)
             if bundle:
                 client._api.prepare_car(vin, params=bundle)
                 sent = True

@@ -8,6 +8,7 @@ import logging
 import threading
 
 from api_backend import LeapmotorApiClient
+from api_v2_bridge import is_refused_password
 from leapmotor_cloud import mate_compat
 
 log = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ def _get_credentials() -> tuple[str, str, str]:
         import db_reader as _dr
         user = _dr.get_account_user()   # same precedence, one definition (Settings shows it too)
         pwd  = _dr.get_secret("leapmotor_pass") or os.environ.get("LEAPMOTOR_PASS", "")
-        pin  = _dr.get_secret("leapmotor_pin")  or os.environ.get("LEAPMOTOR_PIN", "")
+        pin  = os.environ.get("LEAPMOTOR_PIN", "")   # a command takes its car's own (_use_pin_of)
     except Exception:
         user = os.environ.get("LEAPMOTOR_USER", "")
         pwd  = os.environ.get("LEAPMOTOR_PASS", "")
@@ -307,18 +308,13 @@ class LeapmotorSession:
 
         Set per command rather than once at login: the session is built once and the user can change
         the selected car under it, so a PIN frozen at connection time would send car A's four digits
-        with car B's command. Silent by design when there is nothing per-car stored — the reader
-        falls back to the install-wide PIN, which is what every install has today.
+        with car B's command. A car without a PIN gets none, so the command says so instead of
+        carrying the PIN an earlier command left in the session.
         """
-        try:
-            import db_reader as _dr
-            pin = _dr.get_operate_pin(vin)
-        except Exception:                     # noqa: BLE001 — never let this break a command
-            if getattr(self._api, "_mate_cn_api", False):
-                self._api.operation_password = ""
-            return
-        if pin or getattr(self._api, "_mate_cn_api", False):
-            self._api.operation_password = pin
+        import db_reader as _dr
+        pin = _dr.get_operate_pin(vin)        # a failed read refuses the command in _execute_inner
+        self._api.operation_password = pin
+        return bool(pin)
 
     def _connect(self):
         if self._api is not None:
@@ -392,14 +388,17 @@ class LeapmotorSession:
 
     def _execute_inner(self, action_fn) -> tuple[bool, str]:
         with self._lock:
+            # Before any early return: the last command's refusal would be recorded against this one.
+            self.last_refusal = None
             try:
                 self._connect()
                 target = self._target()
                 if target is None:
                     return False, "No vehicle selected"
-                self._use_pin_of(target.vin)
+                if not self._use_pin_of(target.vin):
+                    return False, (f"No operation PIN for {getattr(target, 'car_type', '') or 'the car'} "
+                                   f"·{target.vin[-6:]}: set it in Settings → Vehicle")
                 self._api.last_new_command_receipt = None
-                self.last_refusal = None
                 action_fn(self._api, target.vin)
                 receipt = self._api.last_new_command_receipt
                 if receipt is None:
@@ -500,8 +499,17 @@ class LeapmotorSession:
                         return {"charge_limit_percent": cur.get("percent"), "charge_enabled": cur.get("isEnable"), "start_time": cur.get("beginTime"), "end_time": cur.get("endTime")}
                     raw = self._raw_status()
                     plan = ((raw.get("data") or {}).get("config") or {}).get("3") or {}
+                    limit = plan.get("percent")
+                    if limit is None:
+                        # A T03's status carries no limit; its charge plan (190) does, and reads back
+                        # what was written (#436). Asked only then: on our B10 the plan is a copy of
+                        # the last command and can disagree with the car.
+                        try:
+                            limit = (self._api.get_charge_schedule(self._target().vin) or {}).get("chargesoc")
+                        except Exception as e:  # noqa: BLE001 — the status read stands; no reset for this
+                            log.warning("Charge plan target read: %s", e)
                     return {
-                        "charge_limit_percent": plan.get("percent"),
+                        "charge_limit_percent": limit,
                         "charge_enabled": plan.get("isEnable"),
                         "start_time": plan.get("beginTime"),
                         "end_time": plan.get("endTime"),
@@ -1044,7 +1052,7 @@ def detect_vehicle(user: str, pwd: str, pin: str) -> dict:
                 for v in vehicles]
         return {"vin": cars[0]["vin"], "car_type": cars[0]["car_type"], "vehicles": cars}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "password_refused": is_refused_password(e)}
 
 
 def get_fresh_signals(vin: str | None = None) -> dict | None:
@@ -1489,7 +1497,7 @@ def set_climate_temp(temp, inside=None):
     operate, mode = _t03_force_manual(operate, mode)   # T03 ignores operate=auto (#67) → manual+cold
     circle = "in" if st.get("recirculation") else "out"
     try:
-        fan = max(1, min(int(st.get("fan_level") or 5), 7))
+        fan = max(1, min(int(st.get("fan_level") or 5), _fan_top()))
     except (TypeError, ValueError):
         fan = 5
     body = json.dumps({"circle": circle, "mode": mode, "operate": operate, "position": "all",
@@ -1500,8 +1508,14 @@ def set_climate_temp(temp, inside=None):
 # Change ONE field while PRESERVING the rest of the panel (mode/recirc/temp/fan), read from the last
 # stored position so there's no extra cloud round-trip. ac_on (cmd 170) with mode cold/hot/wind +
 # windlevel is the SAME path set_climate_temp already ships, so cool/heat keep working at the chosen
-# fan. The car rejects windlevel 0 (verified on-car) → clamp to 1-7.
+# fan. The car rejects windlevel 0 (verified on-car) → clamp from 1 to the car's top speed.
 _MODE_TOKEN = {1: "cold", 3: "hot", 4: "wind"}     # signal 3713 → ac_on MANUAL mode token
+def _fan_top():
+    """The top fan speed of the car on screen, the one a command goes to."""
+    import db_reader as _dr
+    from ui_command_access import fan_top
+    vehicle, settings = _dr.get_vehicle()
+    return fan_top((vehicle or {}).get("vin"), settings.get)
 def _climate_ctx():
     """(operate, mode_token, circle, fan, temp) from the latest stored position — PRESERVES the panel
     on a single-field change without a cloud fetch. AUTO (3713=0) / unknown → operate=auto+nohotcold,
@@ -1512,7 +1526,7 @@ def _climate_ctx():
     operate, mode = ("manual", tok) if tok else ("auto", "nohotcold")
     operate, mode = _t03_force_manual(operate, mode)   # T03 ignores operate=auto (#67) → manual+cold
     circle = "in" if st.get("recirculation") else "out"
-    try: fan = max(1, min(int(st.get("fan_level") or 3), 7))
+    try: fan = max(1, min(int(st.get("fan_level") or 3), _fan_top()))
     except (TypeError, ValueError): fan = 3
     try: temp = max(18, min(int(float(st.get("climate_target_temp") or 26)), 32))
     except (TypeError, ValueError): temp = 26
@@ -1523,8 +1537,8 @@ def _send_ac_on(operate, mode, circle, windlevel, temp):
                       separators=(",", ":"))
     return _session.execute(lambda api, vin: api._remote_control(vin=vin, action="ac_on", cmd_content=body))
 def set_fan_level(level):
-    """Set the A/C fan to a 1-7 level (signal 1941), preserving mode/recirc/temp. 0 → clamped to 1."""
-    try: lvl = max(1, min(int(level), 7))
+    """Set the A/C fan to one of the car's speeds (signal 1941), preserving mode/recirc/temp. 0 → clamped to 1."""
+    try: lvl = max(1, min(int(level), _fan_top()))
     except (TypeError, ValueError): return False, "bad fan level"
     operate, mode, circle, _fan, temp = _climate_ctx()
     return _send_ac_on(operate, mode, circle, lvl, temp)

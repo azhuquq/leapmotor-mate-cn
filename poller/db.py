@@ -1,9 +1,12 @@
 """SQLite database layer. Switch DATABASE_URL to postgresql://... for production."""
+import functools
+import types
 import json
 import logging
 import math
 import os
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
@@ -14,6 +17,7 @@ from typing import NamedTuple, Optional
 import crypto
 import events
 import geohash
+import charge_kind
 import charging_places
 
 log = logging.getLogger(__name__)
@@ -117,6 +121,15 @@ _WB_HOME_RADIUS_KM = 1.0      # within this of the learned wallbox → treat the
 _WB_HOME_MIN_KWH = 2.0        # wallbox energy that rules out standby → a certain home charge
 _WB_HOME_MIN_SAMPLES = 2      # min real home charges before trusting the learned location
 
+# #442 @JoseRMorales: the rule above can never learn a MOVE. After it every home charge is "far",
+# so none is measured and the median stays at the old address for good — 25 charges in a row at his
+# new house read "away from the home wallbox". So a charge away from the learned location still reads
+# the counter, on the side (wb_probe_*), and keeps it only if the counter FOLLOWED the car: more than
+# standby can reach (_WB_HOME_MIN_KWH) and never flat for _WB_STUCK_KWH of what the car drew — the
+# same two measurements, never the DC estimate. A kept charge feeds the median, which then moves.
+_WB_COLS = ("wallbox_energy_start_kwh", "ac_energy_kwh", "wb_stuck_kwh")
+_WB_PROBE_COLS = ("wb_probe_last_kwh", "wb_probe_kwh", "wb_probe_stuck_kwh")
+
 # A reconstructed charge whose ΔSoC over its real duration implies a charge power above this is
 # physically impossible (a spurious SoC=0 poll makes a full pack look "charged" in seconds) → it's
 # a glitch, not a charge. Set well above any real charger (incl. DC fast-charge) so a real charge
@@ -145,6 +158,14 @@ _RECONSTRUCT_MAX_TRIP_KM = 1500.0
 # The odometer reads in whole kilometres: below one, a jump cannot be told from its own
 # quantisation. Same floor the trip reconstruction uses, and the reason is the same.
 _OFFLINE_GAP_MIN_KM = 1.0
+
+# The anchored-trip repair (#497). The poll that opened a trip is saved to `positions` just before the
+# trip row, a fraction of a second earlier; two minutes is room for a slow write, not for a second
+# poll at the 10-30 s cadence the poller runs at.
+_ANCHOR_POLL_WINDOW_S = 120
+# A SoC that rose by more than this across the silence holds a charge — the threshold the recorder
+# uses for the same question when it rebuilds a drive it never saw (_maybe_reconstruct_trip).
+_ANCHOR_SOC_RISE = 0.5
 _RECONSTRUCT_TRIP_MIN_KMH = 8.0
 _RECONSTRUCT_TRIP_MAX_KMH = 160.0
 
@@ -361,6 +382,10 @@ class Database:
                 time.sleep(0.05)
 
     def __init__(self, path: str = "leapmotor_mate.db"):
+        # One connection, two threads: the poll loop and paho's network thread, which runs a Home
+        # Assistant command and reads the car's PIN for it. Every method holds this lock (see
+        # `_one_thread_at_a_time` below the class) — re-entrant, because methods call methods.
+        self._lock = threading.RLock()
         self._path = path
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -386,6 +411,7 @@ class Database:
         self._backfill_trip_readings()
         self._repair_odometer_trips()
         self._repair_quantized_trip_distance()
+        self._repair_trips_anchored_over_a_silence()
         self._repair_snap_to_full_charges()
         self._repair_charges_anchored_below_the_detection_floor()
         self._drop_phantom_charges()
@@ -398,6 +424,7 @@ class Database:
         self._repair_reev_engine_efficiency()
         self._repair_bogus_wallbox_energy()
         self.migrate_secrets()
+        self.migrate_install_pin()
         self._check_decryption()
         log.info("Database ready: %s", path)
 
@@ -461,6 +488,110 @@ class Database:
         self.set_setting("trips_odo_quantize_repair_v1", "1")
         if fixed:
             log.info("Quantized-trip repair: %d trip(s) corrected", fixed)
+
+    def _repair_trips_anchored_over_a_silence(self) -> None:
+        """One-time repair for trips that carry the kilometres of a silence (#497, @adoewa).
+
+        Until v3.10.6 a trip that opened after the cloud had been quiet took its start odometer, SoC
+        and position from the last reading BEFORE the silence (`_offline_head`, #130/#233), so a
+        1 km run to the supermarket was stored as 59 km at 0.7 kWh/100km. v3.10.6 sent those
+        kilometres to `offline_gaps` instead (#244) — for what it recorded from then on. This gives
+        the trips recorded before it the same treatment.
+
+        The signature: a trip opens on the poll saved to `positions` just before its row, and
+        without the anchor it starts on that poll's odometer. A start BELOW it is the anchor. The
+        poll is looked for at or before `started_at` only — since v3.10.6 the trip carries the
+        poll's own start time, so what lies before it is the previous poll, never above the start.
+        A trip whose opening poll is gone (positions retention) is left as it is.
+
+        The trip is rewritten as v3.10.6 would have written it; the kilometres go to
+        `offline_gaps` with the SoC that went with them, so Mate's total does not silently fall
+        below the car's odometer. A trip on the cloud's energy keeps it: the cloud measured the
+        drive, not the silence. → tests/test_a_trip_anchored_before_3_10_6_is_repaired.py"""
+        if self.get_setting("trips_offline_anchor_repair_v1") == "1":
+            return
+        rows = self._conn.execute(
+            """SELECT id, vehicle_id, started_at, start_odometer_km, start_soc, end_soc,
+                      end_odometer_km, ec_kwh, ec_stable, efficiency_soc,
+                      fuel_start_pct, fuel_end_pct
+                 FROM trips
+                WHERE ended_at IS NOT NULL AND start_odometer_km > 0""").fetchall()
+        fixed = 0
+        for t in rows:
+            try:
+                since = (datetime.fromisoformat(t["started_at"])
+                         - timedelta(seconds=_ANCHOR_POLL_WINDOW_S)).isoformat()
+            except (TypeError, ValueError):
+                continue
+            poll = self._conn.execute(
+                "SELECT recorded_at, odometer_km, soc, latitude, longitude FROM positions"
+                " WHERE vehicle_id = ? AND recorded_at <= ? AND recorded_at >= ?"
+                " AND odometer_km > 0 ORDER BY recorded_at DESC LIMIT 1",
+                (t["vehicle_id"], t["started_at"], since)).fetchone()
+            if poll is None or poll["odometer_km"] <= t["start_odometer_km"]:
+                continue
+            # Where the news stopped: the first poll of the last frame that still read the old
+            # odometer — the same moment the live path records (the baseline's own time).
+            last_old = self._conn.execute(
+                "SELECT recorded_at, frame_ts FROM positions WHERE vehicle_id = ? AND recorded_at < ?"
+                " AND odometer_km = ? ORDER BY recorded_at DESC LIMIT 1",
+                (t["vehicle_id"], poll["recorded_at"], t["start_odometer_km"])).fetchone()
+            gap_from = poll["recorded_at"]
+            if last_old is not None:
+                gap_from = last_old["recorded_at"]
+                if last_old["frame_ts"] is not None:
+                    gap_from = self._conn.execute(
+                        "SELECT MIN(recorded_at) FROM positions WHERE vehicle_id = ? AND frame_ts = ?"
+                        " AND recorded_at <= ?",
+                        (t["vehicle_id"], last_old["frame_ts"], last_old["recorded_at"])
+                    ).fetchone()[0] or gap_from
+            new_soc = poll["soc"] if poll["soc"] is not None else t["start_soc"]
+            charged = (t["start_soc"] is None or new_soc is None
+                       or new_soc - t["start_soc"] > _ANCHOR_SOC_RISE)
+            self.record_offline_gap(
+                t["vehicle_id"], started_at=gap_from, ended_at=poll["recorded_at"],
+                odo_start=t["start_odometer_km"], odo_end=poll["odometer_km"],
+                soc_start=None if charged else t["start_soc"],
+                soc_end=None if charged else new_soc)
+
+            track = self._conn.execute(
+                "SELECT latitude, longitude FROM trip_positions WHERE trip_id = ? ORDER BY id",
+                (t["id"],)).fetchall()
+            distance_km = trip_distance_km(_gps_track_km(track), len(track) >= 2,
+                                           poll["odometer_km"], t["end_odometer_km"] or 0)
+            if _coord_valid(poll["latitude"], poll["longitude"]):
+                lat, lon = poll["latitude"], poll["longitude"]
+            else:
+                first = next((p for p in track if _coord_valid(p["latitude"], p["longitude"])), None)
+                lat, lon = (first["latitude"], first["longitude"]) if first else (None, None)
+            energy = ((new_soc or 0) - (t["end_soc"] or 0)) / 100.0 \
+                * self.get_battery_capacity(t["vehicle_id"])
+            soc_eff = (energy / distance_km * 100) \
+                if (distance_km and distance_km > 0.5 and energy > 0) else None
+            if _reev_extender_ran(t["fuel_start_pct"], t["fuel_end_pct"]):
+                soc_eff = None
+            if t["efficiency_soc"] is not None and t["ec_kwh"] is not None and distance_km:
+                # On the cloud's energy: that stays, its per-100 km follows the real distance, and
+                # the backup the conversion keeps is the SoC estimate of the trip as rewritten.
+                efficiency, backup = round(t["ec_kwh"] / distance_km * 100, 1), soc_eff
+            else:
+                efficiency, backup = soc_eff, t["efficiency_soc"]
+            self._conn.execute(
+                """UPDATE trips SET start_odometer_km = ?, start_soc = ?, start_lat = ?,
+                       start_lon = ?, start_geohash = ?, distance_km = ?,
+                       efficiency_kwh_100km = ?, efficiency_soc = ? WHERE id = ?""",
+                (poll["odometer_km"], new_soc, lat, lon,
+                 geohash.encode(lat, lon) if lat and lon else None,
+                 round(distance_km, 2) if distance_km is not None else None,
+                 round(efficiency, 2) if efficiency else None, backup, t["id"]))
+            log.info("Trip #%d: started over a silence — %.0f → %.0f km moved to the offline "
+                     "stretches, %s km left to the trip", t["id"], t["start_odometer_km"],
+                     poll["odometer_km"], distance_km)
+            fixed += 1
+        self._conn.commit()
+        self.set_setting("trips_offline_anchor_repair_v1", "1")
+        if fixed:
+            log.info("Anchored-trip repair: %d trip(s) given back their silence", fixed)
 
     def _repair_odometer_trips(self) -> None:
         """One-time repair for trips logged before the odometer-zero guard. When the
@@ -1010,18 +1141,44 @@ class Database:
             out[axis] = own or self.get_setting(f"gps_{axis}_sign", "unknown")
         return out
 
+    def set_gps_record(self, vin: str, record: str) -> None:
+        """This car's anchor and odometer readings (gps_position.record); per car, as the signs."""
+        self.set_setting(f"gps_anchor_{str(vin).lower()}", record)
+
+    def get_gps_record(self, vin: str) -> str:
+        return self.get_setting(f"gps_anchor_{str(vin).lower()}", "") if vin else ""
+
     def get_operate_pin(self, vin: str = "") -> str:
-        """The PIN that authorises a command ON THIS CAR — its own, else the install-wide one (#186).
+        """The PIN that authorises a command ON THIS CAR — its own, else `LEAPMOTOR_PIN` (#186).
 
         The twin of web/db_reader.get_operate_pin; a test holds the two to the same answers. It
         matters here more than there: MQTT is not scoped to a picked car, the topic names the VIN,
         and a command can arrive for either — so authorising with the wrong car's four digits fails
         only sometimes, and never says why."""
-        if vin:
-            own = self.get_secret(f"leapmotor_pin_{str(vin).lower()}", "")
-            if own:
-                return own
-        return self.get_secret("leapmotor_pin", "") or os.environ.get("LEAPMOTOR_PIN", "")
+        own = self.get_secret(f"leapmotor_pin_{str(vin).lower()}", "") if vin else ""
+        return own or os.environ.get("LEAPMOTOR_PIN", "")
+
+    def migrate_install_pin(self) -> list:
+        """Give the install-wide PIN to every car without its own, then drop it. Returns those VINs.
+
+        The PIN is set on the car, so it belongs to the car. Runs when the database opens and again
+        once the cars are registered; idempotent. With two cars a car's own PIN is never overwritten;
+        with one, the install-wide PIN wins, because only the Settings form wrote it alone, after the
+        wizard had written both."""
+        shared = self.get_secret("leapmotor_pin", "")
+        vins = self.vehicle_vins()
+        if not shared or not vins:      # with no car yet, the PIN waits for one
+            return []
+        given = []
+        for vin in vins:
+            own = self.get_secret(f"leapmotor_pin_{vin.lower()}", "")
+            if own != shared and (not own or len(vins) == 1):
+                self.set_secret(f"leapmotor_pin_{vin.lower()}", shared)
+                given.append(vin)
+        self.set_setting("leapmotor_pin", "")
+        log.info("PIN: the install-wide PIN is now the own PIN of %s",
+                 ", ".join(v[-6:] for v in given) or "no car (each has its own)")
+        return given
 
     def migrate_secrets(self) -> None:
         """One-time, idempotent: encrypt any plaintext secret in place. Runs every
@@ -1277,14 +1434,17 @@ class Database:
     def _backfill_vehicle_capacity(self) -> None:
         """Seed every vehicle that predates the per-vehicle columns with its own capacity, so the
         per-vehicle write paths reproduce today's single-car numbers EXACTLY (no-op on upgrade).
-        Idempotent — only fills NULLs. nominal (the SoH baseline) mirrors the legacy global nominal."""
+        Idempotent — only fills NULLs. nominal (the SoH baseline) takes the legacy global nominal on
+        the FIRST car only: it is that car's, and copying it to a second car measured the second
+        car's health against the first car's pack (#472)."""
         gn = self.get_setting("battery_capacity_nominal_kwh")
+        first = self._conn.execute("SELECT MIN(id) AS id FROM vehicles").fetchone()["id"]
         for v in self._conn.execute(
                 "SELECT id, car_type, capacity_kwh, capacity_nominal_kwh FROM vehicles").fetchall():
             if v["capacity_kwh"] is None:
                 self._conn.execute("UPDATE vehicles SET capacity_kwh = ? WHERE id = ?",
                                    (self._capacity_for_new_vehicle(v["car_type"]), v["id"]))
-            if v["capacity_nominal_kwh"] is None and gn:
+            if v["capacity_nominal_kwh"] is None and gn and v["id"] == first:
                 try:
                     self._conn.execute("UPDATE vehicles SET capacity_nominal_kwh = ? WHERE id = ?",
                                        (float(gn), v["id"]))
@@ -1371,8 +1531,8 @@ class Database:
             "WHERE (start_geohash IS NULL AND start_lat IS NOT NULL AND start_lon IS NOT NULL) "
             "OR (end_geohash IS NULL AND end_lat IS NOT NULL AND end_lon IS NOT NULL)").fetchall()
         for r in rows:
-            # Same falsy guard create_trip uses, and for the same reason: _resolve_coord
-            # returns 0.0 (never None) when a frame carries no usable fix, so trips with
+            # Same falsy guard create_trip uses, and for the same reason: gps_position
+            # returns (0, 0) (never None) when a frame carries no usable fix, so trips with
             # start_lat/start_lon = 0.0 are already sitting in every existing database.
             # Testing `is not None` would geohash (0,0) into one bogus "Gulf of Guinea"
             # bucket — and worse, a trip whose first fix was missing would then never match
@@ -1518,8 +1678,10 @@ class Database:
                 window_fl_open, window_rl_open, ac_port_mode,
                 fan_level, recirculation, climate_mode,
                 fuel_level_pct, fuel_range_km, combined_range_km,
-                frame_ts, fuel_liters)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                frame_ts, fuel_liters,
+                tire_fl_bar, tire_fr_bar, tire_rl_bar, tire_rr_bar,
+                tire_fl_alarm, tire_fr_alarm, tire_rl_alarm, tire_rr_alarm)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 vehicle_id, _now_iso(),
                 data.latitude, data.longitude,
@@ -1558,21 +1720,39 @@ class Database:
                 data.fuel_level_pct, data.fuel_range_km, data.combined_range_km,  # REEV dual-energy (NULL on BEV)
                 data.timestamp_ms or None,   # the CAR's own clock on this frame (#178) — 0/absent → NULL
                 getattr(data, "fuel_liters", None),   # litres the car counts itself (3263) — NULL on a BEV
+                # tyre pressures in bar, as the car sent them; NULL where it did not (D#483)
+                getattr(data, "tire_fl_bar", None), getattr(data, "tire_fr_bar", None),
+                getattr(data, "tire_rl_bar", None), getattr(data, "tire_rr_bar", None),
+                # the car's own low-pressure alarm per wheel, NULL where it did not send one
+                getattr(data, "tire_fl_alarm", None), getattr(data, "tire_fr_alarm", None),
+                getattr(data, "tire_rl_alarm", None), getattr(data, "tire_rr_alarm", None),
             ),
         )
         self._conn.commit()
         return cur.lastrowid
 
     def get_last_soc(self, vehicle_id: int):
-        """The most recent recorded (soc, recorded_at) for this vehicle, or (None, None).
-        Used to seed the recorder's SoC baseline across a poller restart so a charge that
-        happened while the poller was down is still caught (SoC-jump reconstruction)."""
+        """The most recent recorded SoC for this vehicle, with the time it was first read, or
+        (None, None). Used to seed the recorder's SoC baseline across a poller restart so a charge
+        that happened while the poller was down is still caught (SoC-jump reconstruction).
+
+        The time is where the news stopped, as in the recorder: the first row of the last run at
+        that SoC — of its last frame, when the rows carry the car's clock. A row without SoC is no
+        news and does not end the run (#501)."""
         row = self._conn.execute(
-            "SELECT soc, recorded_at FROM positions WHERE vehicle_id = ? "
+            "SELECT id, soc, frame_ts FROM positions WHERE vehicle_id = ? "
             "ORDER BY id DESC LIMIT 1", (vehicle_id,)).fetchone()
         if row is None or row["soc"] is None:
             return None, None
-        return float(row["soc"]), row["recorded_at"]
+        soc, frame = row["soc"], row["frame_ts"] or None
+        news = self._conn.execute(
+            "SELECT id FROM positions WHERE vehicle_id = ? AND id < ? AND soc IS NOT NULL "
+            "AND (soc != ? OR (? IS NOT NULL AND frame_ts IS NOT NULL AND frame_ts != ?)) "
+            "ORDER BY id DESC LIMIT 1", (vehicle_id, row["id"], soc, frame, frame)).fetchone()
+        first = self._conn.execute(
+            "SELECT recorded_at FROM positions WHERE vehicle_id = ? AND id > ? AND soc = ? "
+            "ORDER BY id LIMIT 1", (vehicle_id, news["id"] if news else 0, soc)).fetchone()
+        return float(soc), first["recorded_at"]
 
     def get_last_odometer_reading(self, vehicle_id: int):
         """The most recent reading with an odometer for this vehicle, as (odometer km, soc,
@@ -1630,6 +1810,16 @@ class Database:
             sql += " AND frame_ts IS NOT ?"
             args.append(frame_ts)
         return self._conn.execute(sql + " LIMIT 1", args).fetchone() is not None
+
+    def get_newest_frame_ts(self, vehicle_id: int, not_after_ms: int):
+        """The largest positive frame clock on record for this vehicle that is not past `not_after_ms`,
+        or None. The GPS sign memory counts only frames newer than every earlier one (gps_position),
+        so it needs the newest frame heard, not the last row's (a late frame's), nor a clock so far
+        ahead that no real frame after it would ever be newer."""
+        row = self._conn.execute(
+            "SELECT MAX(frame_ts) FROM positions WHERE vehicle_id = ? AND frame_ts > 0 AND frame_ts <= ?",
+            (vehicle_id, not_after_ms)).fetchone()
+        return int(row[0]) if row and row[0] else None
 
     def get_last_frame_ts(self, vehicle_id: int):
         """The newest cloud-frame timestamp on record for this vehicle, or None. Seeds the recorder's
@@ -2171,11 +2361,13 @@ class Database:
             return True
         return haversine_km(lat, lon, home[0], home[1]) <= _WB_HOME_RADIUS_KM
 
-    def set_charge_wallbox_start(self, charge_id: int, kwh: float) -> None:
+    def set_charge_wallbox_start(self, charge_id: int, kwh: float, probe: bool = False) -> None:
         """Seed the wallbox energy tracking at charge START: store the first counter reading and reset
-        the running total to 0. From here accumulate_wallbox_energy() sums the counter's positive rises."""
+        the running total to 0. From here accumulate_wallbox_energy() sums the counter's positive rises.
+        `probe` keeps it on the side, for a charge away from the learned wallbox location (#442)."""
+        last, accum, _stuck = _WB_PROBE_COLS if probe else _WB_COLS
         self._conn.execute(
-            "UPDATE charges SET wallbox_energy_start_kwh=?, ac_energy_kwh=0 WHERE id=?", (kwh, charge_id))
+            f"UPDATE charges SET {last}=?, {accum}=0 WHERE id=?", (kwh, charge_id))
         self._conn.commit()
 
     def save_ha_samples_at_position(self, position_id: int, samples: dict) -> None:
@@ -2212,7 +2404,7 @@ class Database:
         self._conn.commit()
 
     def accumulate_wallbox_energy(self, charge_id: int, reading: float,
-                                  car_kwh_since_last: float = 0.0) -> None:
+                                  car_kwh_since_last: float = 0.0, probe: bool = False) -> None:
         """Add the wallbox counter's POSITIVE rise since the last reading to the charge's running total
         (ac_energy_kwh), called every poll while charging. Race/reset-proof: a counter that zeroes
         mid-session is a single negative step (ignored) and the post-reset rise is still counted — so it
@@ -2224,10 +2416,14 @@ class Database:
         interval), and it is only used to catch a counter that has stopped (#215, see _WB_STUCK_KWH):
         while the counter does not move, that energy piles up in wb_stuck_kwh. A real rise clears it
         again — unless it has already passed the threshold, in which case it LATCHES: energy the meter
-        missed while frozen stays missed even if the meter later comes back to life."""
+        missed while frozen stays missed even if the meter later comes back to life.
+
+        `probe` sums into the wb_probe_* columns instead, for a charge away from the learned wallbox
+        location: nothing reads those as wallbox energy until finalize_charge says they are (#442)."""
+        last_col, accum_col, stuck_col = _WB_PROBE_COLS if probe else _WB_COLS
         row = self._conn.execute(
-            "SELECT wallbox_energy_start_kwh AS last, ac_energy_kwh AS accum, "
-            "started_at, max_power_kw, wb_stuck_kwh AS stuck FROM charges WHERE id=?",
+            f"SELECT {last_col} AS last, {accum_col} AS accum, "
+            f"started_at, max_power_kw, {stuck_col} AS stuck FROM charges WHERE id=?",
             (charge_id,)).fetchone()
         if row is None:
             return
@@ -2258,9 +2454,31 @@ class Database:
                 log.warning("Charge #%d: ignoring implausible wallbox step +%.1f kWh "
                             "(counter glitch / lifetime total)", charge_id, rise)
         self._conn.execute(
-            "UPDATE charges SET wallbox_energy_start_kwh=?, ac_energy_kwh=?, wb_stuck_kwh=? "
+            f"UPDATE charges SET {last_col}=?, {accum_col}=?, {stuck_col}=? "
             "WHERE id=?", (reading, round(accum, 3), round(stuck, 3), charge_id))
         self._conn.commit()
+
+    def _settle_wallbox_probe(self, charge):
+        """A charge whose counter was read on the side (#442): did the counter follow the car? Yes →
+        it is this charge's wallbox energy, moved into the columns everything reads. No → it was
+        never this charge's, and neither were the minutes it went unread. Returns the row as now."""
+        probed = charge["wb_probe_kwh"]
+        if charge["wb_probe_last_kwh"] is None or probed is None:
+            return charge
+        stuck = charge["wb_probe_stuck_kwh"] or 0.0
+        cid = charge["id"]
+        if probed > _WB_HOME_MIN_KWH and stuck < _WB_STUCK_KWH:
+            self._conn.execute(
+                "UPDATE charges SET ac_energy_kwh=?, wallbox_energy_start_kwh=?, wb_stuck_kwh=? "
+                "WHERE id=?", (probed, charge["wb_probe_last_kwh"], stuck, cid))
+            log.info("Charge #%d: away from the learned wallbox location, but its counter followed "
+                     "the car (+%.1f kWh) → attributed to this charge", cid, probed)
+        else:
+            self._conn.execute("UPDATE charges SET wb_dark_min=NULL WHERE id=?", (cid,))
+            log.info("Charge #%d: the wallbox counter did not follow this charge (+%.2f kWh, "
+                     "%.1f kWh drawn while it stood still) → not attributed", cid, probed, stuck)
+        self._conn.commit()
+        return self._conn.execute("SELECT * FROM charges WHERE id = ?", (cid,)).fetchone()
 
     def _last_energising_soc(self, vehicle_id: int, started_at: str, ended_at: str | None = None):
         """Last SoC sampled while the cable was in and current was still entering the pack.
@@ -2437,6 +2655,7 @@ class Database:
         # that delivered nothing. If it gained no SoC AND the wallbox measured no energy, it isn't a
         # real session: drop the row instead of persisting a phantom charge (a genuine charge always
         # shows one or the other). Reconstructed charges have energy by definition, so never here.
+        charge = self._settle_wallbox_probe(charge)
         ac_kwh = charge["ac_energy_kwh"]
         if energy_added <= 0.05 and (ac_kwh is None or ac_kwh <= 0.05) and not charge["reconstructed"]:
             self._conn.execute("DELETE FROM charges WHERE id = ?", (charge_id,))
@@ -2447,11 +2666,8 @@ class Database:
         # Above this power the session is DC fast-charging. Default 11 kW (3-phase AC ceiling
         # for most home wallboxes); a 22 kW AC owner can raise it in Advanced settings so their
         # AC sessions aren't misread as DC.
-        try:
-            dc_min_kw = float(self.get_setting("charge_dc_min_kw", "11") or 11)
-        except (TypeError, ValueError):
-            dc_min_kw = 11.0
-        charge_type  = "DC" if max_power_kw > dc_min_kw else "AC"
+        dc_min_kw    = charge_kind.dc_min_kw(self.get_setting("charge_dc_min_kw", "11"))
+        charge_type  = "DC" if charge_kind.is_dc(None, max_power_kw, dc_min_kw) else "AC"
         cost         = round(energy_added * price_per_kwh, 2) if price_per_kwh else None
 
         # ac_energy_kwh is NOT touched here — it's the running wallbox-counter sum built up over the
@@ -2744,8 +2960,8 @@ class Database:
     def get_open_charge(self, vehicle_id: int):
         """Latest charge session left open (ended_at NULL), or None."""
         return self._conn.execute(
-            "SELECT id, start_soc, max_power_kw, started_at, latitude, longitude FROM charges "
-            "WHERE vehicle_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+            "SELECT id, start_soc, max_power_kw, started_at, latitude, longitude, wb_probe_last_kwh "
+            "FROM charges WHERE vehicle_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
             (vehicle_id,),
         ).fetchone()
 
@@ -2766,3 +2982,28 @@ class Database:
 
     def close(self):
         self._conn.close()
+
+
+def _one_thread_at_a_time(cls):
+    """Every method of `cls` runs holding `self._lock` (#495, @chengler).
+
+    The connection is opened with `check_same_thread=False`, and SQLite does not serialise one
+    connection shared by two threads: a statement from paho's thread in the middle of the poll
+    loop's answers `bad parameter or other API misuse` to both. The command lost its PIN ("Vehicle
+    PIN is missing") and the poll loop its frame. Every method fetches before it returns — none
+    hands out a cursor or a generator — so holding the lock for the call covers the whole use.
+    → tests/test_the_database_serves_one_thread_at_a_time.py"""
+    def serialised(method):
+        @functools.wraps(method)
+        def call(self, *args, **kwargs):
+            with self._lock:
+                return method(self, *args, **kwargs)
+        return call
+
+    for name, member in list(vars(cls).items()):
+        if isinstance(member, types.FunctionType) and not name.startswith("__"):
+            setattr(cls, name, serialised(member))
+    return cls
+
+
+Database = _one_thread_at_a_time(Database)

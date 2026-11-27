@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- **CN: synchronize upstream v5.4.0 after reviewing both histories (235 upstream + 14 CN commits).**
+  Preserve China authentication, telemetry, T03 parking and maps; carry tyre alarms through the shared
+  snapshot, map the new MQTT temperature command to CN permissions, and complete Chinese strings.
+  See [the commit and data-upgrade review](docs/upstream-sync/2026-11-27-review.md).
+
 - **CN T03 parking in N no longer starts a phantom trip.** Stationary neutral uses the
   parked cadence and the usual trip-end confirmation/READY rules, while the gear still reads N.
   Restart recovery, charging detection, the Overview and MQTT use the same model-specific state;
@@ -14,6 +19,388 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   SoC still rejects the frame, and numbered placeholders in named-SoC frames remain untrusted.
 - **Overlapping car-picture refreshes publish complete packages.** Background and manual EU refreshes
   use separate staging files; a failed replacement keeps the existing package and removes its staging file.
+## [5.4.0] — 2026-11-26
+
+See [the notes](docs/releases/v5.4.0.md).
+
+- **The times of a charge Mate recovered can be corrected** ([#501](https://github.com/ProtossBlaster/leapmotor-mate/issues/501)).
+  On a charge marked *auto-detected*, *Correct the times* narrows its start and end inside the
+  span Mate measured; energy and SoC stay as read, a computed cost follows the new start.
+- **The slope of a straight line under the temperature chart** ([D#498](https://github.com/ProtossBlaster/leapmotor-mate/discussions/498)).
+  *Statistics → Consumption against outside temperature* also says how many kWh/100 km a straight line
+  adds for every 10 °C warmer, with its r². It is not sent to Home Assistant.
+
+## [5.3.1] — 2026-11-25
+
+See [the notes](docs/releases/v5.3.1.md).
+
+- **Croatian is the tenth language** ([#506](https://github.com/ProtossBlaster/leapmotor-mate/pull/506), @daleonidas).
+  *Settings → Language → Hrvatski*; the setup wizard follows a browser set to Croatian.
+
+## [5.3.0] — 2026-11-25
+
+See [the notes](docs/releases/v5.3.0.md).
+
+- **The temperature chart reads the right trips, and shows how sure its curve is** ([#503](https://github.com/ProtossBlaster/leapmotor-mate/pull/503), @arekm).
+  Two years of trips, a merged trip as one dot, each dot with the consumption *Trips* shows, the curve weighted by
+  distance, a 95 % band around it and a box with the curve's value under the cursor.
+- **Merged range-extender trips and lighter pages** ([#502](https://github.com/ProtossBlaster/leapmotor-mate/pull/502), @arekm).
+  A refuel between segments is no longer petrol burned; a generator in any segment leaves no electric figure; pages
+  read only the history around the trips they show.
+- **Background sweeps restart after a failed write** ([#504](https://github.com/ProtossBlaster/leapmotor-mate/pull/504), @arekm).
+  A busy database no longer stops getEC and elevation for new trips until a restart.
+
+## [5.2.1] — 2026-11-24
+
+See [the notes](docs/releases/v5.2.1.md).
+
+- **A charge behind a frozen frame is no longer thrown away** ([#501](https://github.com/ProtossBlaster/leapmotor-mate/issues/501), @matttiaromano).
+  A charge rebuilt from a jump in the battery level was measured from the poll before it, 30 s, and thrown away as
+  1512 kW; it now starts at the first reading of the level it started from. *Recover missed charges* finds it too
+  on a car without a frame clock (T03).
+
+## [5.2.0] — 2026-11-22
+
+See [the notes](docs/releases/v5.2.0.md).
+
+- **The consumption-vs-temperature trend is a curve** ([D#498](https://github.com/ProtossBlaster/leapmotor-mate/discussions/498), @hristouzunovaz).
+  On Statistics the straight line becomes a cubic, a·T³ + b·T² + c·T + d with T in °C, drawn between the coldest
+  and the warmest trip, with its four numbers and r² under the chart. It needs 8 trips on 4 different temperatures.
+- **Its numbers go to Home Assistant**: MQTT sensors `Consumption Trend a`…`d` (kWh/100 km) and, on a range
+  extender, `Fuel Trend a`…`d` (L/100 km), unrounded, with `t_min`, `t_max`, `n` and `r2` as attributes; unknown,
+  never 0, while there is no curve. The web computes them every 5 minutes, the poller publishes them.
+
+## [5.1.1] — 2026-11-21
+
+See [the notes](docs/releases/v5.1.1.md).
+
+- **Trips recorded before 3.10.6 give back the kilometres of a silence** ([#497](https://github.com/ProtossBlaster/leapmotor-mate/issues/497), @adoewa).
+  A trip that opened after the cloud had been quiet took its start from the last reading before the silence, so it
+  carried the kilometres driven during it (a 1 km trip stored as 59 km). 3.10.6 stopped this for new trips (#244);
+  on the first start, 5.1.1 rewrites the older ones the same way and moves those kilometres to the ones
+  measured while out of contact.
+
+## [5.1.0] — 2026-11-20
+
+See [the notes](docs/releases/v5.1.0.md).
+
+- **A log book on the Maintenance page** ([D#493](https://github.com/ProtossBlaster/leapmotor-mate/discussions/493), @DanielBrol).
+  Tyre changes, modifications, breakdowns and damage, each with date, odometer, note and cost; a service of the
+  schedule takes a cost too. New column `maintenance_logs.cost`.
+- **Summer and winter tyres are counted from the log book**, so the change can fall on a different day every year, plus
+  the kilometres each set did before Mate. 5.0.0's two fixed days become entries once, same totals; their Settings card is gone.
+- **The Battery health page shows the last charge that ended at 100%** ([D#490](https://github.com/ProtossBlaster/leapmotor-mate/discussions/490), @Tommy73LMB05).
+
+## [5.0.2] — 2026-11-19
+
+See [the notes](docs/releases/v5.0.2.md).
+
+- **5.0.1's fix uses a module the desktop app declares.** The #495 fix used Python's `inspect`, which is not
+  in the list of modules MateDesktop is built with; it now uses `types`. Same behaviour as 5.0.1.
+
+## [5.0.1] — 2026-11-19
+
+See [the notes](docs/releases/v5.0.1.md).
+
+- **A Home Assistant command no longer loses the car's PIN** ([#495](https://github.com/ProtossBlaster/leapmotor-mate/issues/495), @chengler).
+  A command sent over MQTT while Mate was saving a reading could go out with no PIN ("Vehicle PIN is missing"), and
+  that reading was lost ("Frame processing failed"). The poller now uses its database from one thread at a time.
+
+## [5.0.0] — 2026-11-17
+
+See [the notes](docs/releases/v5.0.0.md).
+
+- **Summer and winter tyres, each set with its own kilometres** ([D#493](https://github.com/ProtossBlaster/leapmotor-mate/discussions/493), @DanielBrol).
+  Off unless switched on in *Settings → 🛞 Summer and winter tyres*: choose the day each set goes on, and the
+  Maintenance page shows the set on the car, this season's kilometres and each set's total, past seasons included.
+- **The FAQ on a refused sign-in** asks for the account's email with no extra characters, however it is entered.
+
+## [4.31.0] — 2026-11-17
+
+See [the notes](docs/releases/v4.31.0.md).
+
+- **A refused password longer than the Leapmotor app keeps is named in the setup wizard** ([#492](https://github.com/ProtossBlaster/leapmotor-mate/pull/492), @arekm;
+  [#482](https://github.com/ProtossBlaster/leapmotor-mate/issues/482)). The app can keep only the first 16 characters of a
+  password without a warning; when the cloud refuses a longer one, the wizard says to try its first 16 characters.
+- **The Overview's rows close flush whichever temperatures a car does not send** ([#491](https://github.com/ProtossBlaster/leapmotor-mate/issues/491), @matttiaromano). A T03
+  showed *A/C Target* alone in the left half of its row.
+
+## [4.30.0] — 2026-11-16
+
+See [the notes](docs/releases/v4.30.0.md).
+
+- **Home Assistant sets the A/C target temperature** ([#489](https://github.com/ProtossBlaster/leapmotor-mate/issues/489), @michapr). A writable number,
+  *AC Target Temperature* (18–32 °C), sends the Commands page's own command: only the target changes. The
+  *AC Target* sensor stays.
+
+## [4.29.0] — 2026-11-16
+
+See [the notes](docs/releases/v4.29.0.md).
+
+- **The Overview warns about a tyre** ([D#483](https://github.com/ProtossBlaster/leapmotor-mate/discussions/483), @michapr). A row gives the worst tyre's word,
+  by the Vehicle page's rule (the car's own alarm or under 2.0 bar is too low), and links to the Vehicle
+  page. The car's alarm is now stored beside the pressures.
+- **Two drives with the car out of signal between them are no longer one power-on** ([#487](https://github.com/ProtossBlaster/leapmotor-mate/issues/487), @michapr).
+  A reading the cloud repeats no longer counts as the car still on, so the trip no longer asks to be merged
+  before its official consumption.
+- **The diagnostics bundle carries the charge readings** ([#485](https://github.com/ProtossBlaster/leapmotor-mate/pull/485), @arekm) of the last 10 AC and 10 DC
+  charges, and says which clock each of its times is on.
+
+## [4.28.0] — 2026-11-15
+
+See [the notes](docs/releases/v4.28.0.md).
+
+- **Each tyre's pressure by day, on the Vehicle page** ([D#483](https://github.com/ProtossBlaster/leapmotor-mate/discussions/483), @michapr). The pressures are kept with every
+  reading, and a chart under the tyres draws each tyre's lowest and highest of the day, over 30 or 90 days,
+  beside the outside temperature where it is on. A day with no reading is a gap, never a 0.
+- **A range-extender's fuel in Home Assistant** ([#481](https://github.com/ProtossBlaster/leapmotor-mate/issues/481), @michapr). `Fuel Level` (%), `Fuel Volume` (L) and
+  `Fuel Range` (km) over MQTT. An empty tank reads 0; a plain electric car does not get them.
+- **When the charge is expected to end, on the Overview** ([#484](https://github.com/ProtossBlaster/leapmotor-mate/pull/484), @arekm). The charging chip shows
+  *Est. end 14:40* on hover or tap, and *Ends at* reads *Est. end* on Charges too. A tooltip closes when a
+  refresh replaces what it points at.
+
+## [4.27.1] — 2026-11-12
+
+See [the notes](docs/releases/v4.27.1.md).
+
+- **What you typed and did not save holds the reload** ([#479](https://github.com/ProtossBlaster/leapmotor-mate/pull/479), @arekm). A page that
+  reloads itself waits while a form holds a note or a figure you changed and did not save: a trip note typed
+  and left was gone at the next reload. *Cancel* in a charge's ✎ editors puts back the figure it had.
+- **The end of a charge reloads Charges when you are not using it** ([#479](https://github.com/ProtossBlaster/leapmotor-mate/pull/479), @arekm). It reloaded at
+  once, whatever you were doing, and went back to the top. Now it waits as Trips does at the end of a trip,
+  keeps your place, and also lists a charge followed by the next one between two updates.
+- **A charge typed in needs a date Mate can read** ([#451](https://github.com/ProtossBlaster/leapmotor-mate/issues/451), @ebagnoli). A year of five
+  digits, 72026, was saved and made that charge the Overview's last for good, with nowhere to correct it.
+  The forms refuse a date Mate cannot read, the Overview shows "—" for a SoC a charge does not carry, and a
+  charge saved with such a date is listed above the Charges calendar, to correct or delete.
+
+## [4.27.0] — 2026-11-11
+
+See [the notes](docs/releases/v4.27.0.md).
+
+- **The trip in progress has its chart on the Trips page, live** ([#477](https://github.com/ProtossBlaster/leapmotor-mate/pull/477), @arekm). While the car
+  drives, a card at the top of Trips says when the trip began, the distance so far and the charge level, with
+  the Trip data chart, updated every 30 seconds. When the trip ends the page reloads once, when you are not
+  using it, and keeps your place.
+- **A page that reloads itself keeps your place once its blocks have loaded** ([#476](https://github.com/ProtossBlaster/leapmotor-mate/pull/476), @arekm). Battery
+  health, a trip and the other pages that reload themselves every 30 seconds no longer end up higher than
+  where you were reading.
+
+## [4.26.0] — 2026-11-08
+
+See [the notes](docs/releases/v4.26.0.md).
+
+- **The "←" of a page leads back to where it was opened** ([#473](https://github.com/ProtossBlaster/leapmotor-mate/pull/473), @arekm). A trip opened from the
+  Overview or from Similar trips leads back there with its row in view; a charge opened from a trip leads back
+  to the trip, and one opened from the Map leads back to the Map at the same centre and zoom. The ‹ › arrows
+  keep the way back, and the Map keeps its view on a reload.
+- **A trip opened from a search leads back to the results, at its row** ([#474](https://github.com/ProtossBlaster/leapmotor-mate/pull/474), @arekm). Trips keeps
+  its search in the address, so a reload shows the same search; on Trips and on Charges, *Back to calendar*
+  opens the month the calendar showed.
+- **Each car has its own SoH reference** ([#472](https://github.com/ProtossBlaster/leapmotor-mate/issues/472)). With two cars, battery health measured both against
+  one reference, and setting it for one car changed the other's.
+
+## [4.25.0] — 2026-11-07
+
+A security release. See [the notes](docs/releases/v4.25.0.md), *Upgrade impact* above all.
+
+- **A page on another site cannot drive Mate.** Through DNS rebinding a page could drive a Mate with no
+  password, unlock included. With no password, Mate now answers only on the names a home network uses (an IP
+  address, `localhost`, a name without dots, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`) and on the
+  ones named in the new `MATE_ALLOWED_HOSTS`.
+- **The add-on's port 4000 has the standalone guards**: forms and frames from other sites are refused there.
+  The Home Assistant panel (ingress) is unchanged.
+- **The Home Assistant token goes only over a verified connection** to a public name; a private address, a
+  Tailscale address or a home-network name may keep a self-signed certificate.
+- **Web libraries moved off versions with published advisories**: FastAPI 0.162.2 (Starlette 1.10.0),
+  python-multipart 0.0.33, Pillow 13.0.0, Jinja2 3.1.6, cryptography 50.0.2. A 400 MB field on the login page
+  no longer fills the memory.
+- **Changing the password signs everyone else out**; the car's address is text, never markup.
+- **The desktop app needs MateDesktop 1.2.3**, which carries the new libraries; 1.2.2 does not take this update.
+- **The desktop app on a Mac starts Mate again**: 4.24.0's lock waited for itself on macOS, and the web never opened its port.
+
+## [4.24.0] — 2026-11-07
+
+- **Czech is the ninth language** ([#461](https://github.com/ProtossBlaster/leapmotor-mate/pull/461), @petrw1).
+- **The elevation lookup has a switch** ([#464](https://github.com/ProtossBlaster/leapmotor-mate/pull/464), @petrw1):
+  *Settings → Trip defaults → Elevation and trip temperature*. Ticked by default; unticked, no trip is sent to
+  Open-Meteo by itself, and *Calculate elevation* still looks one trip up on request.
+- **A bad GPS reading does not move a parked car** ([#467](https://github.com/ProtossBlaster/leapmotor-mate/pull/467), @arekm).
+  Readings that lose their minus sign no longer move a parked car across the Greenwich meridian or the
+  equator; a repeated reading counts once; a reading with no usable coordinate is no position.
+- **Home Assistant and ABRP get no zeros the car did not send** ([#468](https://github.com/ProtossBlaster/leapmotor-mate/pull/468), @arekm):
+  no 0, 0 location without a GPS fix, and unknown instead of 0 bar for tyre pressures the car does not send.
+- **A parked car drawing from its battery is not charging** ([#469](https://github.com/ProtossBlaster/leapmotor-mate/pull/469), @arekm).
+- **A charge the car pauses stays one charge**, and the reading stored after a command judges a charge as the
+  poller does ([#470](https://github.com/ProtossBlaster/leapmotor-mate/pull/470), [#471](https://github.com/ProtossBlaster/leapmotor-mate/pull/471), @arekm).
+- **A new Docker install on a Mac starts** ([D#452](https://github.com/ProtossBlaster/leapmotor-mate/discussions/452)): on an empty
+  bind-mounted folder with Docker Desktop, 4.23.0 restarted for ever; the README now has a Compose file for
+  the published image.
+- **Error messages are shown as text, never run** ([#462](https://github.com/ProtossBlaster/leapmotor-mate/pull/462), @petrw1), and
+  **a database backup is restored a piece at a time, up to 4 GiB** ([#463](https://github.com/ProtossBlaster/leapmotor-mate/pull/463), @petrw1).
+
+## [4.23.0] — 2026-11-06
+
+- **The Map shows where the car is** ([D#459](https://github.com/ProtossBlaster/leapmotor-mate/discussions/459), @Coooogz).
+  A marker gives the car's last known position, as on the Overview, and follows the car while the page is
+  open; the map's view does not move. A box on the row under the map, *Last Known Position*, switches it
+  off, and the choice is remembered like the frequent places' one.
+
+## [4.22.0] — 2026-11-05
+
+- **Recent Trips are the rows of the Trips page** ([#457](https://github.com/ProtossBlaster/leapmotor-mate/pull/457), @arekm).
+  On the Overview a recent trip gave its date, start time, duration, distance and consumption; it is now
+  its row on Trips without the route: where it started and ended, the battery before and after, the energy
+  it used and where that figure came from. The Overview prices no trip, so its rows show no cost.
+- **A trip row gives the energy it used.** On Trips each row gives its kWh between the distance and the
+  consumption, the figure its day's heading adds up. A range-extender's row has none, as its totals have none.
+- **A trip row lays out by the room it has, not by the window.** Beside the sidebar, at 800 to 1,024 px, the
+  start and end places of a trip were cut short or left without room; they now read whole, and a place
+  still cut short gives its full name on hover.
+
+## [4.21.0] — 2026-11-03
+
+- **Free charges have their own slice in Home vs Public** ([#450](https://github.com/ProtossBlaster/leapmotor-mate/pull/450), @hubcasale). A charge typed Free
+  was counted as Public; it now has a lime slice and a *Free* tile of its own, shown only when there is
+  one. A Home charge marked free stays under Home. The legend of both rings on Charges is one compact
+  tile per kind: the sessions, the name, and under them the kWh and the share.
+
+## [4.20.0] — 2026-11-03
+
+- **Trips says the energy used** ([#456](https://github.com/ProtossBlaster/leapmotor-mate/pull/456), @arekm).
+  A fifth tile gives the energy all trips used, Statistics' Energy Used, and a day's heading, the month
+  strip and a searched period's total give their kWh. The energy card gives the cloud's *Total
+  consumption* beside the distance and the average, and the Report's tile beside it is called the same.
+  The tiles' icon sits above the figure at every width. A range-extender's Trips page is unchanged.
+- **A month's kWh adds up to Energy Used** ([#455](https://github.com/ProtossBlaster/leapmotor-mate/pull/455), @arekm).
+  Statistics' months and years, the Trips calendar and the monthly Report sum their trips by Energy
+  Used's rule, exactly, instead of multiplying a rounded average back by the kilometres; a trip that used
+  energy without moving now counts in its month. The *Avg consumption* tile on Trips leaves out a cloud
+  0.0 kWh the battery does not vouch for.
+
+## [4.19.0] — 2026-11-03
+
+- **The fan has as many speeds as the car declares** ([#447](https://github.com/ProtossBlaster/leapmotor-mate/pull/447), @arekm; [#445](https://github.com/ProtossBlaster/leapmotor-mate/issues/445), @Tommy73LMB05).
+  A car whose cloud entry declares more than seven fan speeds, such as a B10 with 1–9, gets them on the
+  Vehicle page, the Commands slider and Home Assistant's *Fan Level* number, and a new temperature or
+  recirculation at fan 9 keeps 9 instead of sending 7. The cloud library's climate check takes the
+  declared top, up to 9 ([MATE-API#9](https://github.com/ProtossBlaster/MATE-API/pull/9)). A car that
+  declares nothing, or seven speeds or fewer, keeps 1–7.
+- **A trip's regen counts the time each reading stands for** ([#454](https://github.com/ProtossBlaster/leapmotor-mate/pull/454), @arekm).
+  Each driving reading of regen counted the poll interval, but readings come further apart, so every trip
+  recorded too little regen. A reading now counts the time since the previous fresh frame on the car's
+  clock, or one interval where that cannot be told. Trips recorded before keep their figure.
+
+## [4.18.1] — 2026-11-02
+
+- **The Location tracker in Home Assistant reads the zone of the car's coordinates** ([#453](https://github.com/ProtossBlaster/leapmotor-mate/issues/453), @scoprire87).
+  The `Location` device_tracker Mate publishes over MQTT sent Home Assistant the state `home` whenever
+  the car reported a position, wherever it was, and Home Assistant shows that state instead of the zone
+  of the coordinates. It now reads `home`, `not_home` or the name of the zone the car is in; with no GPS
+  it still reads `not_home`. The same symptom was reported in [#81](https://github.com/ProtossBlaster/leapmotor-mate/issues/81).
+
+## [4.18.0] — 2026-11-01
+
+- **Each car has its own operation PIN, so the PIN typed in Settings is the one commands use** ([#449](https://github.com/ProtossBlaster/leapmotor-mate/pull/449), @arekm).
+  On a single car, the PIN typed in Settings → Vehicle was saved as the install's, while commands used
+  the car's own PIN written by the setup wizard, so a new PIN changed nothing. Mate now keeps only a PIN
+  per car: the form names the car, and with two cars there is no "All cars" entry. An install-wide PIN
+  from an earlier version becomes the own PIN of every car without one, and on a single car it also
+  replaces the car's own. A command to a car with no PIN is not sent, and the Ready automation uses the
+  PIN of the car that turned on.
+- **A car's function config from the cloud is kept, and the diagnostics bundle shows it** ([#446](https://github.com/ProtossBlaster/leapmotor-mate/pull/446), @arekm).
+  The bundle's vehicle abilities section has one more line, `funcConfig`, with the fan's and the
+  temperature's range the cloud's vehicle list gives the car, or `null` when the list has none.
+
+## [4.17.0] — 2026-10-28
+
+- **The charging panel says when the charge ends** ([D#444](https://github.com/ProtossBlaster/leapmotor-mate/discussions/444), @banolka).
+  The Charges page's *Charging status* showed only the minutes left the car sends. Under them it now
+  shows the time the charge ends: the moment the car measured those minutes plus the minutes, in the
+  time zone every other time is shown in, with its day when it falls on another one. A reading a few
+  minutes old does not push the end later.
+
+## [4.16.3] — 2026-10-27
+
+- **A wallbox that moved house is found again** ([#442](https://github.com/ProtossBlaster/leapmotor-mate/issues/442), @JoseRMorales).
+  Mate learns where the wallbox is from the charges it measured, and a charge far from there never got
+  the wallbox counter. After a move every home charge was far, none was measured, and the location
+  could not follow: 25 charges in a row at the new house had no wallbox energy. A charge away from the
+  learned location now reads the counter on the side and keeps it only if the counter followed the
+  car: more than 2 kWh, never standing still while the car drew power. Those charges move the learned
+  location. Charges recorded before this version are not changed.
+
+## [4.16.2] — 2026-10-27
+
+- **The map takes the screen it is on** ([D#438](https://github.com/ProtossBlaster/leapmotor-mate/discussions/438), @Tommy73LMB05).
+  The Map page's map was 560 px tall and as wide as the pages' 1152 px column on every screen: on a 28"
+  monitor it left a band of empty page under it, on a 14" laptop the legend row with *Trips shown* and
+  *Stations shown* sat below the fold. It now takes the page's whole width and ends where the legend row
+  still fits, 400 px at least, so on a phone or a very low window the page scrolls as before. Resizing
+  the window resizes the map. Only the Map page changes width; every other page keeps its column.
+
+## [4.16.1] — 2026-10-27
+
+- **A T03 shows its charge target** ([#436](https://github.com/ProtossBlaster/leapmotor-mate/issues/436), @sarifarm).
+  A T03's status carries no charge limit, so right after a save the Charges page's target card showed
+  nothing, and the MQTT `charge_limit` stayed unknown. Its charge plan carries it: in @sarifarm's log
+  the plan answered the target on 21 reads out of 21, and read back what Mate had written. Mate now reads
+  it there when the status has none; a car whose status carries the limit keeps reading it there.
+
+## [4.16.0] — 2026-10-26
+
+- **The Overview map draws today's last trip** ([PR #440](https://github.com/ProtossBlaster/leapmotor-mate/pull/440), @arekm). The Last Known Position map
+  drew only where the car is. It now also draws the route of the car's latest trip, while it is under way
+  and for the rest of the day it ended, with the lines a trip's own page draws. The map asks every few
+  seconds, so it sends the route it already has and gets the points again only when they change. The
+  car's dot loses the white square behind it. The trip's page, the Map page and the report's month map
+  draw their routes with one shared script, unchanged to look at.
+- **A computer clock a little behind the car's no longer blocks commands** ([D#437](https://github.com/ProtossBlaster/leapmotor-mate/discussions/437), @Letraz).
+  Before a command Mate checks the car's latest reading, and refused any reading dated after the
+  computer's clock (`state_timestamp_invalid`). A Windows PC synchronised with NTP ran up to 25 s
+  behind the car's readings, and every command sent while the car was awake was refused. A reading
+  dated up to 60 s after the clock is now taken as current; one further ahead is still refused.
+
+## [4.15.12] — 2026-10-25
+
+- **On a T03 the target card says it is the official app's upper limit** ([#436](https://github.com/ProtossBlaster/leapmotor-mate/issues/436), @sarifarm).
+  The Charges page's target card writes its number into the car's charge plan, and its description
+  said that target is not the upper limit in the car's own app. On a T03 it is: @sarifarm set 92 % and
+  then 90 % from the card, and the official app showed each as its upper charging limit. A car with the
+  simple charge scheduler now reads so, in every language; a car with the weekly scheduler keeps the
+  old description.
+
+## [4.15.11] — 2026-10-24
+
+- **An odometer the car did not send is not published as 0 km** ([PR #358](https://github.com/ProtossBlaster/leapmotor-mate/pull/358), @arekm). The
+  poller keeps an absent odometer as 0 in memory, for the state machine and the recorder, and the
+  database has stored it as empty since 4.7.2; MQTT and ABRP read the number in memory, so MQTT
+  published a retained 0.0 and ABRP sent odometer 0. The T03 leaves the odometer out of some readings:
+  two diagnostics bundles show it, in #338 and #400. A reading without an odometer now publishes nothing
+  on the odometer topic, so the broker keeps the last value, as for a reading without a range (#365),
+  and ABRP gets no odometer field. An odometer the car sent, 0 included, is published as before.
+
+## [4.15.10] — 2026-10-23
+
+- **A temperature the car did not send is not 0 °C** ([#435](https://github.com/ProtossBlaster/leapmotor-mate/issues/435), @matttiaromano). The web's fresh
+  reading, taken after a command or a refresh, stored the battery temperature, the cabin's and the A/C
+  target as `float(x or 0)`, so a car that does not send them got 0 °C. The T03 sends no battery
+  temperature: one fresh reading during a charge made that charge's coldest battery 0 °C, and Battery
+  health left it out as a cold charge, three of four in #435. The poller has kept an absent temperature
+  empty since #144; the web now follows the same rule, and a real 0 °C stays 0. The zeros already
+  stored stay in the database: for a car that has never reported a battery temperature other than 0,
+  Battery health no longer takes them as readings.
+
+## [4.15.9] — 2026-10-22
+
+- **Battery health counts the charges of a T03** ([#435](https://github.com/ProtossBlaster/leapmotor-mate/issues/435), @matttiaromano). The page leaves out an
+  AC charge whose SoC rose faster than 0.8 points a minute between two readings, to skip the jumps a
+  battery makes when it recalibrates. The T03 reports its SoC in whole points, so every point it gains
+  appeared between two readings 30 s apart, about 2 points a minute: every AC charge of a T03 was left
+  out, and the page had no figure. A rise of one step of the SoC's own resolution (a whole point, or a
+  tenth on a precise SoC) no longer counts as a jump; a real leap still does. On a B10 the same rule
+  clears a charge left out for a single 0.1 step between two readings 6 s apart. The page works from the
+  stored charges, so earlier charges count too.
 
 ## [4.15.8] — 2026-10-21
 

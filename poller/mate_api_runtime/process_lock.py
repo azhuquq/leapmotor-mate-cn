@@ -41,8 +41,24 @@ def exclusive(path):
                 msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
         else:
             import fcntl
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            import sys
+            # On Linux, two locks, because neither holds everywhere. flock() locks the open file,
+            # so it also keeps out another thread of this process; but on a Docker Desktop bind
+            # mount (macOS) it does not keep out another process, and the web and the poller then
+            # installed the application material at the same time on a fresh /data. lockf() locks
+            # for the process and holds on that mount, as SQLite's own locks do. lockf first.
+            # On macOS itself (the desktop app) the two are ONE lock table: a process holding
+            # lockf() waits for ever on its own flock(). There flock() alone holds between
+            # processes, as it did before 4.24.0, and a container is Linux even on a Mac.
+            posix = sys.platform != 'darwin'
+            if posix:
+                fcntl.lockf(lock, fcntl.LOCK_EX)
             try:
-                yield
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
             finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                if posix:
+                    fcntl.lockf(lock, fcntl.LOCK_UN)

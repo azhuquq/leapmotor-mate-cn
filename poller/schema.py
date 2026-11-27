@@ -137,6 +137,10 @@ CREATE TABLE IF NOT EXISTS charges (
                                    -- reading taken — time nobody measured, so the AC total is short
                                    -- by an unknown amount. Counted in minutes, never in kWh: with
                                    -- no reading there is nothing to count kWh from.
+    wb_probe_kwh     REAL,         -- #442: the same sum, kept ON THE SIDE for a charge away from the
+    wb_probe_last_kwh REAL,        -- learned wallbox location (its running baseline; non-NULL = probed)
+    wb_probe_stuck_kwh REAL,       -- and its #215 stall. Moved into ac_energy_kwh only if the counter
+                                   -- followed the car: see db.finalize_charge.
     gross_kwh        REAL,         -- #222: kWh the CHARGER says it delivered, TYPED BY THE OWNER.
                                    -- Never measured by Mate and never mixed with the measured
                                    -- figures: it prices the charge (like a wallbox meter does at
@@ -170,6 +174,7 @@ CREATE TABLE IF NOT EXISTS maintenance_logs (
     done_date        TEXT NOT NULL,             -- ISO date the service was performed
     done_odometer_km REAL,                       -- odometer at the service (prefilled with current)
     note             TEXT,
+    cost             REAL,                       -- what it cost, in the install's currency (D#493)
     created_at       TEXT DEFAULT (datetime('now'))
 );
 
@@ -468,8 +473,8 @@ def ensure_schema(conn) -> None:
     # inside the schema script fails on a fresh database and takes the WHOLE script down with it.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_v2l ON positions(vehicle_id, recorded_at)"
                  " WHERE ac_port_mode = 2")
-    # migration: extended climate panel (validated on-car 2026-06-20) — fan level (1941 acAirVolume,
-    # 1-7), recirculation (1943: 1=recirc / 0=fresh), base climate mode (3713: 0 auto/1 cool/3 heat/4 vent).
+    # migration: extended climate panel (validated on-car 2026-06-20) — fan level (1941 acAirVolume),
+    # recirculation (1943: 1=recirc / 0=fresh), base climate mode (3713: 0 auto/1 cool/3 heat/4 vent).
     if "fan_level" not in cols:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN fan_level INTEGER DEFAULT NULL")
     if "recirculation" not in cols:
@@ -496,10 +501,24 @@ def ensure_schema(conn) -> None:
     # report it (and on every row written before this column existed).
     if "frame_ts" not in cols:
         _add_column(conn, "ALTER TABLE positions ADD COLUMN frame_ts INTEGER DEFAULT NULL")
+    # migration: the four tyre pressures, in bar (signals 2646 FL, 2653 FR, 2660 RL, 2667 RR, kPa
+    # / 100) — D#483. They were shown live and thrown away, so there was no history to draw. NULL
+    # where the car did not send one: a silent sensor is not a tyre at 0 bar.
+    for _c in ("tire_fl_bar", "tire_fr_bar", "tire_rl_bar", "tire_rr_bar"):
+        if _c not in cols:
+            _add_column(conn, f"ALTER TABLE positions ADD COLUMN {_c} REAL DEFAULT NULL")
+    # migration: the car's own low-pressure alarm per wheel (2641 FL, 2648 FR, 2655 RL, 2662 RR),
+    # 1/0, NULL where it did not send one — the Overview's tyre warning reads it with the pressures.
+    for _c in ("tire_fl_alarm", "tire_fr_alarm", "tire_rl_alarm", "tire_rr_alarm"):
+        if _c not in cols:
+            _add_column(conn, f"ALTER TABLE positions ADD COLUMN {_c} INTEGER DEFAULT NULL")
     # migration: the car's DECLARED ability codes (VehicleAbility ints, stored as a JSON list) —
     # lets the diagnostic + future capability-gating show ONLY what a model actually supports,
     # instead of assuming every car has the same commands (#67; also covers models we don't own
     # yet, e.g. the B05). Refreshed by ensure_vehicle on every poller start.
+    # migration: D#493 — what a service or a log-book entry cost (NULL: not given, never 0)
+    if "cost" not in {r[1] for r in conn.execute("PRAGMA table_info(maintenance_logs)").fetchall()}:
+        _add_column(conn, "ALTER TABLE maintenance_logs ADD COLUMN cost REAL")
     vcols = {r[1] for r in conn.execute("PRAGMA table_info(vehicles)").fetchall()}
     if "abilities" not in vcols:
         _add_column(conn, "ALTER TABLE vehicles ADD COLUMN abilities TEXT DEFAULT NULL")
@@ -524,6 +543,10 @@ def ensure_schema(conn) -> None:
     # migration: #295 — minutes a charge sat open at the wallbox with no counter reading taken
     if "wb_dark_min" not in ccols:
         _add_column(conn, "ALTER TABLE charges ADD COLUMN wb_dark_min REAL")
+    # migration: #442 — the wallbox counter read on the side for a charge away from its learned location
+    for col in ("wb_probe_kwh", "wb_probe_last_kwh", "wb_probe_stuck_kwh"):
+        if col not in ccols:
+            _add_column(conn, f"ALTER TABLE charges ADD COLUMN {col} REAL")
     # migration: #222 — the charger's own kWh, typed in for a public charge
     if "gross_kwh" not in ccols:
         _add_column(conn, "ALTER TABLE charges ADD COLUMN gross_kwh REAL")
@@ -638,6 +661,9 @@ def ensure_schema(conn) -> None:
     tcols = {r[1] for r in conn.execute("PRAGMA table_info(trips)").fetchall()}
     if "merged_into_id" not in tcols:
         _add_column(conn, "ALTER TABLE trips ADD COLUMN merged_into_id INTEGER DEFAULT NULL")
+    # A merged trip's segments are read by their parent; only segments carry one, so the index stays small.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trips_merged_into ON trips(merged_into_id)"
+                 " WHERE merged_into_id IS NOT NULL")
     # migration: flag trips RECONSTRUCTED from an odometer jump (car offline/asleep to the cloud —
     # or poller down — for the whole drive, so no DRIVING poll ever fired). Twin of charges.reconstructed.
     if "reconstructed" not in tcols:

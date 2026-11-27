@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import NamedTuple, Optional
 
-from db import (Database, _WB_STUCK_MIN_KW, _now_iso, _generator_was_running)
+from db import (Database, _RECOVERY_MAX_GAP_S, _WB_STUCK_MIN_KW, _now_iso, _generator_was_running)
 from schema import WALLBOX_ENERGY_KWH, WALLBOX_POWER_KW
 from state_machine import (State, StateMachine, StateEvent, _PARKED_STATES,
                            FROZEN_DRIVE_LIMIT_S)
@@ -64,10 +64,15 @@ class Recorder:
         # Whether the active charge may trust the home wallbox counter (decided from its GPS at open
         # / resume). Default True = attribute, so anything unlocated behaves exactly as before.
         self._charge_at_wallbox: bool = True
+        # The counter is read on the side: the charge is away from the learned wallbox location (#442).
+        self._wb_probe: bool = False
         self._started: bool = False
         # SoC-jump charge reconstruction (GitHub #29): baseline SoC + when we last saw it.
         self._last_soc: Optional[float] = None
         self._last_soc_ts: Optional[str] = None
+        # The frame the SoC baseline was last read from (None without the car's clock): a repeat of it is
+        # no news, so it does not move the baseline's time (#501).
+        self._last_soc_frame: Optional[int] = None
         # Set by the close in _handle_event, read and cleared by _maybe_reconstruct_charge in the
         # SAME poll: the two run in that order inside process(), so without it the reconstruction
         # sees the state the close just produced. See the guard there.
@@ -82,6 +87,8 @@ class Recorder:
         self._last_fresh_ts: Optional[str] = None
         # Timestamp of the last cloud frame (#128) — see process() for what a repeat means.
         self._last_frame_ts: Optional[int] = None
+        # The last fresh frame's clock (None without one): where the next reading's regen span starts.
+        self._last_reading_ts: Optional[int] = None
         # Our clock as this poll began, before its frame was saved: every `positions` row older than
         # this was already on disk. See _settle_trip_after_outage.
         self._polled_at: Optional[str] = None
@@ -130,8 +137,12 @@ class Recorder:
             if is_charging:
                 self._active_charge_id = open_charge["id"]
                 self._max_charge_kw = open_charge["max_power_kw"] or 0.0
-                self._charge_at_wallbox = self._db.wallbox_energy_applies(
+                # Away from the wallbox, it goes on being read on the side only if it was from the
+                # start (#442): one opened by an older version would be measured from halfway.
+                at_wallbox = self._db.wallbox_energy_applies(
                     self._vehicle_id, open_charge["latitude"], open_charge["longitude"])
+                self._wb_probe = not at_wallbox and open_charge["wb_probe_last_kwh"] is not None
+                self._charge_at_wallbox = at_wallbox or self._wb_probe
                 self._sm.state = State.CHARGING
                 log.info("Resumed open charge #%d (car still charging)", open_charge["id"])
             else:
@@ -169,6 +180,7 @@ class Recorder:
             # so without this the FIRST poll after any restart can never be a repeat — and a frame the
             # cloud is only re-serving gets recorded as if it were fresh. See get_last_frame_ts.
             self._last_frame_ts = self._db.get_last_frame_ts(self._vehicle_id)
+            self._last_soc_frame = self._last_frame_ts
 
         # When the car is unreachable (4G dead zone, or the eSIM re-registering on a foreign network
         # at a border) the cloud does not say so — it re-serves the LAST frame it received: identical
@@ -178,6 +190,11 @@ class Recorder:
         # (#128). Frame identity is the test — it needs no threshold, so a host clock skewed against
         # the cloud (−48s in the wild) cannot fool it.
         stale = bool(data.timestamp_ms) and data.timestamp_ms == self._last_frame_ts
+        went_back = bool(data.timestamp_ms and self._last_frame_ts and data.timestamp_ms < self._last_frame_ts)
+        prev_reading_ts = self._last_reading_ts
+        if not stale:
+            # Without a clock, or older than the frame before it, a frame cannot place the next one in time.
+            self._last_reading_ts = None if went_back else data.timestamp_ms or None
         if data.timestamp_ms:
             self._last_frame_ts = data.timestamp_ms
 
@@ -231,7 +248,14 @@ class Recorder:
             regen = 0.0
             if (not data.plug_connected and (data.charge_current_a or 0) < -3.0
                     and data.charge_power_kw is not None and not _generator_ran):
-                regen = data.charge_power_kw * (self._sm.poll_driving / 3600)
+                # A reading stands for the time since the previous fresh frame on the car's clock (polls come
+                # late, and some cars send frames less often); one interval without a usable gap.
+                span = self._sm.poll_driving
+                if data.timestamp_ms and prev_reading_ts:
+                    gap = (data.timestamp_ms - prev_reading_ts) / 1000
+                    if 0 < gap <= _RECOVERY_MAX_GAP_S:
+                        span = gap
+                regen = data.charge_power_kw * span / 3600
             self._trip_polls.append(_TripPoll(position_id, point_id, regen))
 
         # During active charge: track peak power, and sum the wallbox counter's rises so the billed
@@ -244,8 +268,11 @@ class Recorder:
                 reading = self._read_wallbox()
                 wb = reading.get("energy_kwh")
                 # Kept with the poll's row, so the chart's wallbox line outlives Home Assistant's history.
-                self._db.save_ha_samples_at_position(position_id, {WALLBOX_POWER_KW: reading.get("power_kw"),
-                                                             WALLBOX_ENERGY_KWH: wb})
+                # Not for a counter read on the side (#442): on a public charge it is not this charge's
+                # line, and one that turns out to be is filled from Home Assistant like any home charge.
+                if not self._wb_probe:
+                    self._db.save_ha_samples_at_position(position_id, {WALLBOX_POWER_KW: reading.get("power_kw"),
+                                                                 WALLBOX_ENERGY_KWH: wb})
                 if wb is not None:
                     # What the CAR says it took over this poll — the only thing that can tell a
                     # STOPPED counter from a slow one (#215). Sent only while the car reports real
@@ -260,7 +287,7 @@ class Recorder:
                     car_kwh = (data.charge_power_kw * (self._sm.poll_interval / 3600)
                                if not stale and data.charge_power_kw is not None
                                and data.charge_power_kw >= _WB_STUCK_MIN_KW else 0.0)
-                    self._db.accumulate_wallbox_energy(self._active_charge_id, wb, car_kwh)
+                    self._accumulate_wallbox(wb, car_kwh)
                     log.debug("Charge #%d: wallbox counter %.3f kWh", self._active_charge_id, wb)
                 else:
                     # Home Assistant had no answer: this poll measured nothing, and a total summed
@@ -402,12 +429,23 @@ class Recorder:
         reports #27/#28). The one trace left is a SoC that JUMPED up while parked. Detect that jump
         and reconstruct the charge from the SoC delta.
 
-        Runs every poll. The baseline advances each poll, so a live charge (whose SoC rises gradually
-        while state == CHARGING) is skipped here — the live path records those, with real power and
-        wallbox cost. We only reconstruct when parked, with no charge open, and the rise clears the
-        threshold (so vampire-drain drops and BMS recalibration jitter never invent a phantom charge)."""
+        Runs every poll, so a live charge (whose SoC rises gradually while state == CHARGING) is
+        skipped here — the live path records those, with real power and wallbox cost. We only
+        reconstruct when parked, with no charge open, and the rise clears the threshold (so
+        vampire-drain drops and BMS recalibration jitter never invent a phantom charge).
+
+        The baseline's time is where the news stopped: the first reading of its SoC, or of its frame
+        when the car sends a clock — not the last poll. Behind a frozen frame the two are days apart,
+        and measuring from the last poll put a whole charge into 30 seconds: 12.6 kWh at an implied
+        1512 kW, thrown away as impossible (#501, a T03, which sends no frame clock — so there a
+        repeat cannot be told from a fresh frame, and only a change of SoC is news). The trip
+        reconstruction does the same (#244)."""
         prev_soc, prev_ts = self._last_soc, self._last_soc_ts
-        self._last_soc, self._last_soc_ts = data.soc, _now_iso()   # advance baseline every poll
+        frame = data.timestamp_ms or None
+        if data.soc != prev_soc or (frame is not None and frame != self._last_soc_frame):
+            self._last_soc, self._last_soc_ts = data.soc, _now_iso()
+        if frame is not None:
+            self._last_soc_frame = frame
         if prev_soc is None or prev_ts is None:
             return
         # A charge closed on THIS poll owns that SoC rise — it has just been written as a live row.
@@ -524,10 +562,11 @@ class Recorder:
             return
         reading = self._read_wallbox()
         wb = reading.get("energy_kwh")
-        self._db.save_ha_samples(self._vehicle_id, _now_iso(), {WALLBOX_POWER_KW: reading.get("power_kw"),
-                                                                WALLBOX_ENERGY_KWH: wb})
+        if not self._wb_probe:
+            self._db.save_ha_samples(self._vehicle_id, _now_iso(), {WALLBOX_POWER_KW: reading.get("power_kw"),
+                                                                    WALLBOX_ENERGY_KWH: wb})
         if wb is not None:
-            self._db.accumulate_wallbox_energy(self._active_charge_id, wb, 0.0)
+            self._accumulate_wallbox(wb, 0.0)
         else:
             self._db.note_wallbox_unread(self._active_charge_id, self.poll_interval / 60)
 
@@ -573,7 +612,7 @@ class Recorder:
         if self._charge_at_wallbox:
             end_wb = self._read_wallbox().get("energy_kwh")
             if end_wb is not None:
-                self._db.accumulate_wallbox_energy(self._active_charge_id, end_wb)
+                self._accumulate_wallbox(end_wb)
         log.info("Charge #%d: the charge is over — closing it on the last reading seen while "
                  "charging (%s)", self._active_charge_id,
                  "SoC %.1f%% at %s" % end if end else "none available, using the live frame")
@@ -583,6 +622,10 @@ class Recorder:
         self._active_charge_id = None
         self._max_charge_kw = 0.0
         self._charge_closed_this_poll = True
+
+    def _accumulate_wallbox(self, reading: float, car_kwh: float = 0.0) -> None:
+        """Add a counter reading to the open charge — on the side when it is away from the wallbox."""
+        self._db.accumulate_wallbox_energy(self._active_charge_id, reading, car_kwh, probe=self._wb_probe)
 
     def _read_wallbox(self) -> dict:
         """The wallbox as Home Assistant reports it now: `energy_kwh` (the counter) and `power_kw`, each
@@ -673,20 +716,24 @@ class Recorder:
                 self._max_charge_kw = 0.0
                 if data:
                     self._active_charge_id = self._db.create_charge(self._vehicle_id, data)
-                    # Only seed the wallbox baseline if this charge is AT the wallbox. A charge known
-                    # to be far (public station) leaves the wallbox columns NULL → its idle/standby
-                    # counter is never attributed, and it stays eligible for the 📍 station lookup.
-                    self._charge_at_wallbox = self._db.wallbox_energy_applies(
+                    # A charge known to be far from the learned wallbox (public station) reads the
+                    # counter ON THE SIDE: its wallbox columns stay NULL → its idle/standby counter is
+                    # never attributed, and it stays eligible for the 📍 station lookup — unless the
+                    # counter follows the car, which is how a wallbox that moved house is found
+                    # again (#442; decided in db.finalize_charge).
+                    self._wb_probe = not self._db.wallbox_energy_applies(
                         self._vehicle_id, data.latitude, data.longitude)
-                    if self._charge_at_wallbox:
-                        start_wb = self._read_wallbox().get("energy_kwh")  # seed the wallbox-counter baseline
-                        if start_wb is not None:
-                            self._db.set_charge_wallbox_start(self._active_charge_id, start_wb)
-                            log.info("Charge #%d: wallbox counter at start = %.3f kWh",
-                                     self._active_charge_id, start_wb)
-                    else:
-                        log.info("Charge #%d: away from the home wallbox → its counter is not "
-                                 "attributed to this charge", self._active_charge_id)
+                    self._charge_at_wallbox = True
+                    start_wb = self._read_wallbox().get("energy_kwh")  # seed the wallbox-counter baseline
+                    if start_wb is not None:
+                        self._db.set_charge_wallbox_start(self._active_charge_id, start_wb,
+                                                          probe=self._wb_probe)
+                    if self._wb_probe:
+                        log.info("Charge #%d: away from the home wallbox → its counter is read on the "
+                                 "side, attributed only if it follows the car", self._active_charge_id)
+                    elif start_wb is not None:
+                        log.info("Charge #%d: wallbox counter at start = %.3f kWh",
+                                 self._active_charge_id, start_wb)
 
         elif frm == State.CHARGING and to in _PARKED_STATES:
             if event.frozen and self._active_charge_id and data:
@@ -700,7 +747,7 @@ class Recorder:
                 if self._charge_at_wallbox:
                     end_wb = self._read_wallbox().get("energy_kwh")   # final reading → capture the last rise
                     if end_wb is not None:
-                        self._db.accumulate_wallbox_energy(self._active_charge_id, end_wb)
+                        self._accumulate_wallbox(end_wb)
                         log.info("Charge #%d: wallbox counter at stop = %.3f kWh",
                                  self._active_charge_id, end_wb)
                 # The cable read gone is the ordinary end; the car declaring the charge

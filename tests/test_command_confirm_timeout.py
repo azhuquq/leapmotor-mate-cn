@@ -37,6 +37,7 @@ def _session_with(monkeypatch, api):
             sess._vehicle = veh
 
     monkeypatch.setattr(sess, "_connect", fake_connect)
+    monkeypatch.setattr(sess, "_use_pin_of", lambda vin: True)
     monkeypatch.setattr(cc.time, "sleep", lambda *_a, **_k: None)
     return sess
 

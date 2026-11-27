@@ -12,7 +12,7 @@ def test_error_is_single_attempt_without_automatic_refresh_or_relogin(monkeypatc
     sess=cc.LeapmotorSession();sess._api=api
     sess._vehicle=types.SimpleNamespace(vin='SYNTHETIC')
     monkeypatch.setattr(sess,'_connect',lambda:None)
-    monkeypatch.setattr(sess,'_use_pin_of',lambda vin:None)
+    monkeypatch.setattr(sess,'_use_pin_of',lambda vin:True)
     calls=[]
     def action(client,vin):
         calls.append(vin)
@@ -28,7 +28,7 @@ def test_cloud_acceptance_is_not_physical_confirmation(monkeypatch):
     sess=cc.LeapmotorSession();sess._api=api
     sess._vehicle=types.SimpleNamespace(vin='SYNTHETIC')
     monkeypatch.setattr(sess,'_connect',lambda:None)
-    monkeypatch.setattr(sess,'_use_pin_of',lambda vin:None)
+    monkeypatch.setattr(sess,'_use_pin_of',lambda vin:True)
     def action(client,vin):client.last_new_command_receipt=types.SimpleNamespace(outcome='accepted')
     ok,message=sess.execute(action)
     assert ok and 'physical execution not confirmed' in message

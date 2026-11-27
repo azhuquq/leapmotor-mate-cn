@@ -56,10 +56,14 @@ class VehicleData:
     window_fr_open: bool = False
     window_rl_open: bool = False
     window_rr_open: bool = False
-    tire_fl_bar: float = 0.0
-    tire_fr_bar: float = 0.0
-    tire_rl_bar: float = 0.0
-    tire_rr_bar: float = 0.0
+    tire_fl_bar: float | None = None
+    tire_fr_bar: float | None = None
+    tire_rl_bar: float | None = None
+    tire_rr_bar: float | None = None
+    tire_fl_alarm: int | None = None
+    tire_fr_alarm: int | None = None
+    tire_rl_alarm: int | None = None
+    tire_rr_alarm: int | None = None
     # Comfort STATE sensors (read-only). They reflect reality on the B10 even though the
     # matching remote COMMANDS don't actuate (see capability_profile). 0 = off, >0 = level/on.
     seat_heat_driver: int = 0       # signal 2100 driverSeatHeating
@@ -170,7 +174,7 @@ class VehicleSnapshot:
     def panel(self):
         status = self.status()
         return {
-            'tyres': {corner: {'bar': status.get('tire_' + corner + '_bar'), 'low': None} for corner in ('fl', 'fr', 'rl', 'rr')},
+            'tyres': {corner: {'bar': status.get('tire_' + corner + '_bar'), 'low': (None if status.get('tire_' + corner + '_alarm') is None else status['tire_' + corner + '_alarm'] == 1)} for corner in ('fl', 'fr', 'rl', 'rr')},
             'doors': {key: status.get(field) for key, field in {'driver': 'door_driver_open', 'passenger': 'door_passenger_open', 'rear_left': 'door_rear_left_open', 'rear_right': 'door_rear_right_open', 'trunk': 'trunk_open'}.items()},
             'windows': {**{key: None for key in ('fl', 'fr', 'rl', 'rr', 'fl_pct', 'fr_pct', 'rl_pct', 'rr_pct')},
                         'sunshade': None if status.get('sunshade_pct') is None else bool(status['sunshade_pct']),

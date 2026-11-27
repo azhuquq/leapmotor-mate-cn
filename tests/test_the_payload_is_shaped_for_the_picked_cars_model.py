@@ -67,6 +67,8 @@ def two_cars(tmp_path, monkeypatch):
     c.commit()
     pdb._conn.close()
     monkeypatch.setattr(db_reader, "DB_PATH", path)
+    db_reader.set_operate_pin("1111", VIN_T03)
+    db_reader.set_operate_pin("2222", VIN_C10)
 
     s = command_client.LeapmotorSession()
     s._api = _Api()

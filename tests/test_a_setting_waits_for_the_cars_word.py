@@ -200,7 +200,7 @@ def test_the_page_tells_the_cars_yes_from_its_silence(monkeypatch, outcome, ok, 
     sess._api = api
     sess._vehicle = types.SimpleNamespace(vin='SYNTHETIC')
     monkeypatch.setattr(sess, '_connect', lambda: None)
-    monkeypatch.setattr(sess, '_use_pin_of', lambda vin: None)
+    monkeypatch.setattr(sess, '_use_pin_of', lambda vin: True)
 
     def action(client, vin):
         client.last_new_command_receipt = types.SimpleNamespace(outcome=outcome)

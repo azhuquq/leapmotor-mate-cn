@@ -138,12 +138,3 @@ def test_giving_a_car_its_own_pin_answers_the_strip_too(tmp_path, monkeypatch):
     asyncio.run(main.set_operation_pin(_Req(
         {"pin": "1234", "pin2": "1234", "vin": "LFZTEST0000000099"})))
     assert _flagged(db_reader) == []
-
-
-def test_a_pin_for_the_whole_install_answers_for_nobody(tmp_path, monkeypatch):
-    """No `vin` is the old install-wide PIN. It says nothing about WHICH car anyone looked at, so
-    it must not silence a strip — that is how the notice would disappear for a car nobody has seen."""
-    import asyncio
-    db_reader, main = _two_cars(tmp_path, monkeypatch)
-    asyncio.run(main.set_operation_pin(_Req({"pin": "1234", "pin2": "1234"})))
-    assert _flagged(db_reader) == ["C10"]

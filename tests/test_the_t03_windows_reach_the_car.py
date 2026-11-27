@@ -105,7 +105,7 @@ def _session(monkeypatch, failure):
     sess._api = types.SimpleNamespace(last_new_command_receipt=None)
     sess._vehicle = types.SimpleNamespace(vin='SYNTHETIC')
     monkeypatch.setattr(sess, '_connect', lambda: None)
-    monkeypatch.setattr(sess, '_use_pin_of', lambda vin: None)
+    monkeypatch.setattr(sess, '_use_pin_of', lambda vin: True)
 
     def action(client, vin):
         raise failure

@@ -41,7 +41,8 @@ def _card(**over):
         # environment has to mirror it, or the card renders against a Jinja that does not
         # have it.
         gross_kwh_ok=lambda: True,
-        charge_energy=db_reader.charge_energy_view, billed_kwh=db_reader._billed_kwh,
+        charge_energy=db_reader.charge_energy_view, charge_is_dc=db_reader.charge_is_dc,
+        billed_kwh=db_reader._billed_kwh,
         billed_basis=db_reader.billed_basis,
         solar_kwh_ok=lambda: True, solar_mode_on=lambda: False,
         # The price box is labelled in the reader's own money, so every context that
@@ -73,13 +74,14 @@ def test_the_date_sits_above_the_time_not_inside_it():
 
 
 def test_the_search_route_is_what_sets_it():
-    """Grep the routes rather than run them: the point is that ONLY a search route adds the label,
-    so the calendar views can't start showing it by accident and repeat their own day heading.
+    """Grep the routes rather than run them: the point is that ONLY a route whose rows stand alone (a
+    search, the Overview) adds the label, so the calendar views can't start showing it by accident and
+    repeat their own day heading.
 
-    Viaggi got the same split in #204's release, so there are now two setters — one per page. The
-    rule is not "how many" but "where": every assignment must live inside a /search route. Counting
-    them instead would just need bumping each time a page gains a search, which is how a guard
-    quietly turns into a formality."""
+    Viaggi got the same split in #204's release, so each page's search sets it, and the Overview's
+    recent trips stand alone too. The rule is not "how many" but "where": every assignment must live
+    inside a /search route or the Overview's. Counting them instead would just need bumping each time
+    a page gains a search, which is how a guard quietly turns into a formality."""
     main = (ROOT / "web" / "main.py").read_text()
     search = main[main.index('@app.get("/api/charges/search"'):]
     search = search[:search.index("@app.get", 10)]
@@ -90,7 +92,8 @@ def test_the_search_route_is_what_sets_it():
     setters = [c.splitlines()[0] for c in chunks if '["date_label"] =' in c]
     assert setters, "nobody sets date_label any more — the search results lost their date"
     for route in setters:
-        assert "/search" in route, f"date_label is set outside a search route: @app.{route}"
+        assert "/search" in route or route.startswith('get("/",'), \
+            f"date_label is set outside a search route or the Overview: @app.{route}"
 
 
 def test_the_label_matches_the_history_tree_format():

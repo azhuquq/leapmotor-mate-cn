@@ -24,7 +24,7 @@ ALIASES = {
     'door_lock': 'lock', 'door_lock_toggle': 'lock', 'climate_cool': 'climate', 'climate_heat': 'climate',
     'climate_auto': 'climate', 'climate_vent': 'climate', 'fan_level': 'climate',
     'recirculation': 'climate', 'recirc_toggle': 'climate',
-    'climate_temperature': 'climate', 'climate_fan': 'climate', 'climate_recirc': 'climate',
+    'climate_temp': 'climate', 'climate_temperature': 'climate', 'climate_fan': 'climate', 'climate_recirc': 'climate',
     'lock_vehicle': 'lock', 'unlock_vehicle': 'unlock', 'find_vehicle': 'find_car',
     'set_windows': 'windows', 'save_charge_schedule': 'charge_schedule',
     'set_charge_schedule': 'charge_schedule', 'set_charge_limit': 'charge_limit',

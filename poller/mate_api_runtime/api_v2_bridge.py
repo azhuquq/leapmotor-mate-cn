@@ -91,6 +91,8 @@ RESULT_PATH = CONTROL_PATH + '/query'
 # The commands no signal of the car shows done — the charge plan (190) and a destination for the
 # navigator (180) — wait for the car's word. A physical command shows in the car's own signals, which
 # the page reads again after it.
+# How far a reading may be dated after this computer's clock and still count as current (D#437).
+CLOCK_BEHIND_CAR_MARGIN = timedelta(seconds=60)
 CONFIRMED_BY_THE_CAR = frozenset({'180', '190'})
 # Left out of the command log, which a diagnostics bundle publishes: a destination is a place, and
 # set_id names the phone that wrote a climate schedule.
@@ -193,6 +195,11 @@ def _rejection(status, codes):
 # A sign-in refused for its password, in the words the poller and the history worker wait an hour
 # on (#411).
 REFUSED_PASSWORD='incorrect account or password'
+
+
+def is_refused_password(error) -> bool:
+    """Whether a sign-in failed because the cloud refused the account's email or password."""
+    return REFUSED_PASSWORD in str(error)
 
 
 class NewAPIClient(MateClientCompatibility):
@@ -531,7 +538,7 @@ class NewAPIClient(MateClientCompatibility):
                     if not row.get('vin'):continue
                     vehicles.append(Vehicle.from_dict(row,is_shared=shared))
                     self.__dict__.setdefault('_listed_car_types',{})[row['vin']]=str(row.get('carType') or '').upper()
-                    raw={key:row.get(key) for key in ('vin','carType','rightList','moduleRights','abilities','rudder')}
+                    raw={key:row.get(key) for key in ('vin','carType','rightList','moduleRights','abilities','rudder','funcConfig')}
                     set_setting(db,snapshot_key(row['vin']),json.dumps(dict(
                         account=account_hash(self.username),at=time.time(),shared=shared,vehicle=raw)))
         return vehicles
@@ -753,6 +760,11 @@ class NewAPIClient(MateClientCompatibility):
             timestamp=num('1')
             try:observed=datetime.fromtimestamp(timestamp/1000,timezone.utc) if timestamp is not None else None
             except (ValueError,OverflowError,OSError):observed=None
+            # A reading dated a little after this computer's clock is a clock behind the car's, not a
+            # reading from the future: an NTP-synchronised Windows PC ran up to 25 s behind (D#437), and
+            # every command sent while the car was awake was refused. Taken as current within a minute.
+            now=datetime.now(timezone.utc)
+            if observed is not None and now<observed<=now+CLOCK_BEHIND_CAR_MARGIN:observed=now
             # Remote commands must remain available while the vehicle sleeps.
             # Age alone cannot distinguish sleep from an unavailable live reading.
             # Retain timestamp validity and last-known stationary/ON3 checks;
@@ -763,7 +775,7 @@ class NewAPIClient(MateClientCompatibility):
             speed,on3=num('1319'),num('1258')
             operating=OperatingState(vin,observed,None if speed is None or speed<0 else speed!=0,
                                      None if on3 is None or on3<0 else on3!=0)
-            decision=operating_decision(operating,now=datetime.now(timezone.utc),
+            decision=operating_decision(operating,now=now,
                 state_max_age=timedelta(seconds=60),allow_stale_parked=True)
             if not configuration_only and decision.state is not Availability.AVAILABLE:
                 raise LeapmotorApiError('Command not sent: '+decision.reason)

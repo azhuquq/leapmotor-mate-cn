@@ -1,6 +1,6 @@
 # 中國區版本
 
-此分支已同步 LeapMotor Mate **v4.15.8** 的本地記錄與網頁介面，使用 `ha-leapmotor-cn` 的 Android 認證及中國區協定，並參照 `leapmotor-app2api` 的 B01 控制請求與回執格式。第一個驗收目標為 **B01 2025、全權限共享帳號**。同步與中國區相容性複核見 [v4.15.8 複核紀錄](CN-V4.15.8-REVIEW.md)。
+此分支已同步 LeapMotor Mate **v5.4.0** 的本地記錄與網頁介面，使用 `ha-leapmotor-cn` 的 Android 認證及中國區協定，並參照 `leapmotor-app2api` 的 B01 控制請求與回執格式。第一個驗收目標為 **B01 2025、全權限共享帳號**。本次逐 commit 與資料升級檢查見 [v5.4.0 同步複核](upstream-sync/2026-11-27-review.md)；早期結果見 [v4.15.8 複核紀錄](CN-V4.15.8-REVIEW.md)。
 
 ## 啟動與登入
 
